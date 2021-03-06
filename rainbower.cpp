@@ -351,11 +351,11 @@ CharPositionVector ParseCFile(const char *buffer)
                     multiline_comment = NULL;
                 }
             }
-            else if(*c == '*' && c != buffer && *(c - 1) == '/')
+            else if(current_string == '\0' && *c == '*' && c != buffer && *(c - 1) == '/')
             {
                 multiline_comment = c;
             }
-            else if(*c == '/' && c != buffer && *(c - 1) == '/')
+            else if(current_string == '\0' && *c == '/' && c != buffer && *(c - 1) == '/')
             {
                 line_comment = true;
             }
@@ -514,7 +514,7 @@ CharPositionVector ParseRustFile(const char *buffer)
             if(line_comment)
             {
             }
-            else if(*c == '*' && c != buffer && *(c - 1) == '/')
+            else if(current_string == '\0' && *c == '*' && c != buffer && *(c - 1) == '/')
             {
                 multiline_comment = PushCommentLevel(multiline_comment, c);
             }
@@ -525,7 +525,7 @@ CharPositionVector ParseRustFile(const char *buffer)
                     multiline_comment = PopCommentLevel(multiline_comment);
                 }
             }
-            else if(*c == '/' && c != buffer && *(c - 1) == '/')
+            else if(current_string == '\0' && *c == '/' && c != buffer && *(c - 1) == '/')
             {
                 line_comment = true;
             }
