@@ -5,6 +5,7 @@
 # This holds the actual positions we want to highlight and their colors
 declare-option -hidden range-specs rainbow
 declare-option -hidden str-list window_range
+declare-option -hidden str kak_rainbower_source %sh{ echo "${kak_source%/*}" }
 # Rainbow colors
 declare-option str-list rainbow_colors
 # colors from https://github.com/absop/RainbowBrackets
@@ -25,6 +26,12 @@ define-command rainbow-disable-window -docstring "disable rainbow parentheses fo
     remove-highlighter window/rainbow
 }
 
+define-command rainbower-compile %{
+    evaluate-commands %sh{
+        c++ ${kak_opt_kak_rainbower_source}/rainbower.cpp -o ${kak_opt_kak_rainbower_source}/rainbower
+    }
+}
+
 # Does rainbow parens on the current view
 define-command -hidden rainbow-view %{
     evaluate-commands -draft -save-regs ^ %{
@@ -32,7 +39,7 @@ define-command -hidden rainbow-view %{
             set-option window window_range %val{window_range}
             execute-keys -save-regs _ ' ;Z<ret>' # save original main selection in ^ reg
             evaluate-commands -save-regs '|' %{
-                execute-keys -draft '%<a-|>rainbower ${kak_client} "${kak_timestamp}" ${kak_opt_rainbow_mode} $(echo $kak_reg_caret | cut -d" " -f2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f1-2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f3-4) $kak_opt_filetype $kak_opt_rainbow_colors ! $kak_opt_background_rainbow_colors | kak -p "${kak_session}"<ret>'
+                execute-keys -draft '%<a-|>${kak_opt_kak_rainbower_source}/rainbower ${kak_client} "${kak_timestamp}" ${kak_opt_rainbow_mode} $(echo $kak_reg_caret | cut -d" " -f2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f1-2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f3-4) $kak_opt_filetype $kak_opt_rainbow_colors ! $kak_opt_background_rainbow_colors | kak -p "${kak_session}"<ret>'
             }
         }
     }
