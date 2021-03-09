@@ -623,6 +623,11 @@ CharPositionVector ParseRustFile(const char *buffer)
         s = PopCharPosition(s);
     }
 
+    while(multiline_comment)
+    {
+        multiline_comment = PopCommentLevel(multiline_comment);
+    }
+
     return result;
 }
 
