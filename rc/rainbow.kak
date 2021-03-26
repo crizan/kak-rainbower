@@ -15,6 +15,9 @@ set-option global background_rainbow_colors rgb:331500 rgb:332200 rgb:003300 rgb
 declare-option int rainbow_mode
 set-option global rainbow_mode 1
 
+declare-option str rainbow_check_templates
+set-option global rainbow_check_templates "n"
+
 define-command rainbow-enable-window -docstring "enable rainbow parentheses for this window" %{
     hook -group rainbow window NormalIdle .* %{ rainbow-view }
     hook -group rainbow window InsertIdle .* %{ rainbow-view }
@@ -39,7 +42,7 @@ define-command -hidden rainbow-view %{
             set-option window window_range %val{window_range}
             execute-keys -save-regs _ ' ;Z<ret>' # save original main selection in ^ reg
             evaluate-commands -save-regs '|' %{
-                execute-keys -draft '%<a-|>${kak_opt_kak_rainbower_source}/rainbower ${kak_client} "${kak_timestamp}" ${kak_opt_rainbow_mode} $(echo $kak_reg_caret | cut -d" " -f2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f1-2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f3-4) $kak_opt_filetype $kak_opt_rainbow_colors ! $kak_opt_background_rainbow_colors | kak -p "${kak_session}"<ret>'
+                execute-keys -draft '%<a-|>${kak_opt_kak_rainbower_source}/rainbower ${kak_client} "${kak_timestamp}" ${kak_opt_rainbow_mode} $(echo $kak_reg_caret | cut -d" " -f2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f1-2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f3-4) $kak_opt_filetype "$kak_opt_rainbow_check_templates" $kak_opt_rainbow_colors ! $kak_opt_background_rainbow_colors | kak -p "${kak_session}"<ret>'
             }
         }
     }

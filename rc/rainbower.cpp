@@ -21,7 +21,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
 */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -311,7 +310,63 @@ CharPositionVector ParseGenericFile(const char *buffer)
     return result;
 }
 
-CharPositionVector ParseCFile(const char *buffer)
+bool DeleteLessThanSign(CharPositionVector *vec)
+{
+    int found = -1;
+    int closing = 0;
+
+    for(int i = vec->len - 1; i >= 0; --i)
+    {
+        if(vec->array[i].c == '<')
+        {
+            if(closing)
+            {
+                closing--;
+            }
+            else
+            {
+                found = i;
+                break;
+            }
+        }
+        else
+        {
+            closing++;
+        }
+    }
+
+    if(found != -1)
+    {
+        for(int i = found + 1; i < vec->len; ++i)
+        {
+            vec->array[i - 1] = vec->array[i];
+        }
+        vec->len--;
+    }
+
+    return (found != -1);
+}
+
+int NumPairable(CharPositionVector vec)
+{
+    int count = 0;
+
+    for(int i = 0; i < vec.len; ++i)
+    {
+        if(vec.array[i].c == '<')
+        {
+            count++;
+        }
+        else
+        {
+            count--;
+        }
+    }
+
+    return count;
+}
+
+CharPositionVector ParseCFile(const char *buffer, bool check_templates)
 {
     CharPositionVector result = {};
 
@@ -327,8 +382,125 @@ CharPositionVector ParseCFile(const char *buffer)
 
     bool line_comment = false;
 
+    CharPositionVector templates = {};
+
+    if(check_templates)
+    {
+        for(const char *c = buffer; *c != '\0'; c++)
+        {
+            int bytes = GetUTF_8CharBytes(*c);
+            if(*c == ';')
+            {
+                while(DeleteLessThanSign(&templates));
+            }
+            if(*c == '\n')
+            {
+                cur_pos.a++;
+                cur_pos.b = 1;
+                line_comment = false;
+            }
+            else if(bytes == 1)
+            {
+                CharPosition p = {};
+                p.c = *c;
+                p.pair = cur_pos;
+                if(line_comment)
+                {
+                }
+                else if(multiline_comment)
+                {
+                    if(*c == '/' && *(c - 1) == '*' && c != multiline_comment + 1)
+                    {
+                        multiline_comment = NULL;
+                    }
+                }
+                else if(current_string == '\0' && *c == '*' && c != buffer && *(c - 1) == '/')
+                {
+                    multiline_comment = c;
+                }
+                else if(current_string == '\0' && *c == '/' && c != buffer && *(c - 1) == '/')
+                {
+                    line_comment = true;
+                }
+                else if(current_string == '\0')
+                {
+                    if(*c == '<')
+                    {
+                        Insert(&templates, p);
+                    }
+                    else if(*c == '>')
+                    {
+                        if(NumPairable(templates) > 0)
+                        {
+                            // NOTE ignore arrow
+                            if(*(c - 1) != '-')
+                            {
+                                Insert(&templates, p);
+                            }
+                        }
+                    }
+                    else if(p.c == '\'' || p.c == '\"')
+                    {
+                        current_string = *c;
+                    }
+                }
+                else if(current_string)
+                {
+                    if((current_string == '\'' && *c == '\'') &&
+                       (*(c - 1) != '\\' || *(c - 2) == '\\'))
+                    {
+                        current_string = '\0';
+                    }
+                    else if((current_string == '\"' && *c == '\"') &&
+                            (*(c - 1) != '\\' || *(c - 2) == '\\'))
+                    {
+                        current_string = '\0';
+                    }
+                }
+                cur_pos.b++;
+            }
+            else if(bytes == 2)
+            {
+                ++c;
+                cur_pos.b++;
+            }
+            else if(bytes == 3)
+            {
+                for(int i = 0; *c != '\0' && i < 2; ++i, ++c);
+                cur_pos.b++;
+            }
+            else if(bytes == 4)
+            {
+                for(int i = 0; *c != '\0' && i < 3; ++i, ++c);
+                cur_pos.b++;
+            }
+        }
+    }
+
+    cur_pos = { 1, 1 };
+
+    level = 0;
+
+    current_string = '\0';
+
+    multiline_comment = NULL;
+
+    line_comment = false;
+
+    // for(int i = 0; i < templates.len; ++i)
+    // {
+    //     printf("echo -debug %c {%d, %d}\n", templates.array[i].c, templates.array[i].pair.a, templates.array[i].pair.b);
+    // }
+
+    int template_i = 0;
+
     for(const char *c = buffer; *c != '\0'; c++)
     {
+        IntPair current_template = {};
+        if(template_i < templates.len)
+        {
+            current_template = templates.array[template_i].pair;
+        }
         int bytes = GetUTF_8CharBytes(*c);
         if(*c == '\n')
         {
@@ -361,13 +533,21 @@ CharPositionVector ParseCFile(const char *buffer)
             }
             else if(current_string == '\0')
             {
-                if(*c == '(' || *c == '[' || *c == '{')
+                if(*c == '(' || *c == '[' || *c == '{' ||
+                   (current_template.a == cur_pos.a && current_template.b == cur_pos.b
+                    && *c == '<'))
                 {
                     p.level = level;
                     s = PushCharPosition(s, p);
                     level++;
+                    if(current_template.a == cur_pos.a && current_template.b == cur_pos.b)
+                    {
+                        template_i++;
+                    }
                 }
-                else if(p.c == ')' || p.c == ']' || p.c == '}')
+                else if(p.c == ')' || p.c == ']' || p.c == '}' ||
+                       (current_template.a == cur_pos.a && current_template.b == cur_pos.b
+                        && p.c == '>'))
                 {
                     char opening_bracket;
                     if(p.c == ')')
@@ -381,6 +561,10 @@ CharPositionVector ParseCFile(const char *buffer)
                     else if(p.c == '}')
                     {
                         opening_bracket = '{';
+                    }
+                    else if(p.c == '>')
+                    {
+                        opening_bracket = '<';
                     }
                     RainbowStack *copy = s;
                     while(copy && copy->data.c != opening_bracket)
@@ -400,6 +584,10 @@ CharPositionVector ParseCFile(const char *buffer)
                         Insert(&result, p2);
                         s = PopCharPosition(s);
                         level--;
+                    }
+                    if(current_template.a == cur_pos.a && current_template.b == cur_pos.b)
+                    {
+                        template_i++;
                     }
                 }
                 else if(p.c == '\'' || p.c == '\"')
@@ -442,6 +630,11 @@ CharPositionVector ParseCFile(const char *buffer)
     while(s)
     {
         s = PopCharPosition(s);
+    }
+
+    if(templates.array)
+    {
+        free(templates.array);
     }
 
     return result;
@@ -663,7 +856,9 @@ int main(int argc, const char **argv)
     window_bottom.a = window_top.a + window_size.a;
     window_bottom.b = window_top.b + window_size.b;
 
-    int i = 8;
+    char check_templates = argv[8][0];
+
+    int i = 9;
 
     const char **colors = argv + i;
     int num_colors = 0;
@@ -696,9 +891,13 @@ int main(int argc, const char **argv)
     }
 
     CharPositionVector result;
-    if(strcmp(filetype, "c") == 0 || strcmp(filetype, "cpp") == 0)
+    if(strcmp(filetype, "c") == 0)
     {
-        result = ParseCFile(source_code.data);
+        result = ParseCFile(source_code.data, false);
+    }
+    if(strcmp(filetype, "cpp") == 0)
+    {
+        result = ParseCFile(source_code.data, (check_templates == 'Y'));
     }
     else if(strcmp(filetype, "rust") == 0)
     {
