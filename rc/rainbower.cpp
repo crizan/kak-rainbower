@@ -824,21 +824,20 @@ CharPositionVector ParseRustFile(const char *buffer)
     return result;
 }
 
-typedef struct {
-    char* data;
-    unsigned long long length;
-} String;
+#define BUFFER_SIZE 500
 
-// IMPORTANT to_append MUST be NULL terminated
-void AppendCStringToString(String *s, const char* to_append) {
-    size_t chars = strlen(to_append);
+struct String
+{
+    char *data;
+    size_t length;
+};
 
+void AppendCStringToString(String *s, const char *to_append, size_t chars)
+{
     s->data = (char *)realloc(s->data, s->length + chars + 1);
-    strncpy(s->data + s->length, to_append, chars);
+    snprintf(s->data + s->length, chars + 1, "%s", to_append);
     s->length += chars;
 }
-
-#define BUFFER_SIZE 500
 
 int main(int argc, const char **argv)
 {
@@ -881,8 +880,7 @@ int main(int argc, const char **argv)
     char buffer[BUFFER_SIZE] = {};
     while(int bytes_read = read(STDIN_FILENO, buffer, BUFFER_SIZE))
     {
-        buffer[bytes_read] = '\0';
-        AppendCStringToString(&source_code, buffer);
+        AppendCStringToString(&source_code, buffer, bytes_read);
     }
 
     if(!source_code.data)
@@ -911,10 +909,9 @@ int main(int argc, const char **argv)
     CharPosition cursor_range_a = {};
     CharPosition cursor_range_b = {};
 
-    String output = {};
-
-    sprintf(buffer, "eval -client %s set-option window rainbow %s ", client, timestamp);
-    AppendCStringToString(&output, buffer);
+    {
+        printf("eval -client %s set-option window rainbow %s ", client, timestamp);
+    }
 
     for(int k = result.len - 2; k >= 0; k -= 2)
     {
@@ -924,15 +921,11 @@ int main(int argc, const char **argv)
         const char *color = colors[level_index];
         if(IsMaxPair(p.pair, window_top) && IsMinPair(p.pair, window_bottom))
         {
-            snprintf(buffer, BUFFER_SIZE, "%d.%d,%d.%d|%s ",
-                p.pair.a, p.pair.b, p.pair.a, p.pair.b, color);
-            AppendCStringToString(&output, buffer);
+            printf("%d.%d,%d.%d|%s ", p.pair.a, p.pair.b, p.pair.a, p.pair.b, color);
         }
         if(IsMaxPair(p2.pair, window_top) && IsMinPair(p2.pair, window_bottom))
         {
-            snprintf(buffer, BUFFER_SIZE, "%d.%d,%d.%d|%s ",
-                p2.pair.a, p2.pair.b, p2.pair.a, p2.pair.b, color);
-            AppendCStringToString(&output, buffer);
+            printf("%d.%d,%d.%d|%s ", p2.pair.a, p2.pair.b, p2.pair.a, p2.pair.b, color);
         }
         if(mode == '2')
         {
@@ -940,17 +933,13 @@ int main(int argc, const char **argv)
             const char *color = background_colors[level_index];
             if(IsRangeVisible(p.pair, p2.pair, window_top, window_bottom))
             {
-                snprintf(buffer, BUFFER_SIZE, "%d.%d,%d.%d|default,%s ",
-                    p.pair.a, p.pair.b, p2.pair.a, p2.pair.b, color);
-                AppendCStringToString(&output, buffer);
+                printf("%d.%d,%d.%d|default,%s ", p.pair.a, p.pair.b, p2.pair.a, p2.pair.b, color);
             }
         }
         else if(mode == '1')
         {
-            if(((cursor_pair.a > p.pair.a) ||
-                (cursor_pair.b >= p.pair.b && cursor_pair.a == p.pair.a)) &&
-               ((cursor_pair.a < p2.pair.a) ||
-                (cursor_pair.b <= p2.pair.b && cursor_pair.a == p2.pair.a)))
+            if(((cursor_pair.a > p.pair.a) || (cursor_pair.b >= p.pair.b && cursor_pair.a == p.pair.a)) &&
+               ((cursor_pair.a < p2.pair.a) || (cursor_pair.b <= p2.pair.b && cursor_pair.a == p2.pair.a)))
             {
                 cursor_range_a = p;
                 cursor_range_b = p2;
@@ -965,18 +954,11 @@ int main(int argc, const char **argv)
             const char *color = "rgb:003300";
             if(IsRangeVisible(cursor_range_a.pair, cursor_range_b.pair, window_top, window_bottom))
             {
-                snprintf(buffer, BUFFER_SIZE, "%d.%d,%d.%d|default,%s ",
+                printf("%d.%d,%d.%d|default,%s ",
                     cursor_range_a.pair.a, cursor_range_a.pair.b,
                     cursor_range_b.pair.a, cursor_range_b.pair.b, color);
-                AppendCStringToString(&output, buffer);
             }
         }
-    }
-
-    if(output.data)
-    {
-        printf("%s", output.data);
-        free(output.data);
     }
 
     if(result.array)
