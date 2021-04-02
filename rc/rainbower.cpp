@@ -389,7 +389,7 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
         for(const char *c = buffer; *c != '\0'; c++)
         {
             int bytes = GetUTF_8CharBytes(*c);
-            if(*c == ';')
+            if(*c == ';' || *c == '{')
             {
                 while(DeleteLessThanSign(&templates));
             }
@@ -486,11 +486,6 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
     multiline_comment = NULL;
 
     line_comment = false;
-
-    // for(int i = 0; i < templates.len; ++i)
-    // {
-    //     printf("echo -debug %c {%d, %d}\n", templates.array[i].c, templates.array[i].pair.a, templates.array[i].pair.b);
-    // }
 
     int template_i = 0;
 
@@ -673,9 +668,11 @@ MultilineCommentsStack *PopCommentLevel(MultilineCommentsStack *s)
     return NULL;
 }
 
-CharPositionVector ParseRustFile(const char *buffer)
+CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
 {
     CharPositionVector result = {};
+
+    CharPositionVector generics = {};
 
     RainbowStack *s = NULL;
 
@@ -690,8 +687,141 @@ CharPositionVector ParseRustFile(const char *buffer)
 
     bool line_comment = false;
 
+    if(check_generics)
+    {
+        for(const char *c = buffer; *c != '\0'; c++)
+        {
+            bool closed_string = false;
+
+            int bytes = GetUTF_8CharBytes(*c);
+            if(*c == '{' || *c == '|' || *c == '^' || *c == '!')
+            {
+                while(DeleteLessThanSign(&generics));
+            }
+            if(*c == '\n')
+            {
+                cur_pos.a++;
+                cur_pos.b = 1;
+                line_comment = false;
+            }
+            else if(bytes == 1)
+            {
+                CharPosition p = {};
+                p.c = *c;
+                p.pair = cur_pos;
+                if(line_comment)
+                {
+                }
+                else if(current_string == '\0' && *c == '*' && c != buffer && *(c - 1) == '/')
+                {
+                    multiline_comment = PushCommentLevel(multiline_comment, c);
+                }
+                else if(multiline_comment)
+                {
+                    if(*c == '/' && *(c - 1) == '*' && c != multiline_comment->ptr + 1)
+                    {
+                        multiline_comment = PopCommentLevel(multiline_comment);
+                    }
+                }
+                else if(current_string == '\0' && *c == '/' && c != buffer && *(c - 1) == '/')
+                {
+                    line_comment = true;
+                }
+                else if(current_string)
+                {
+                    if(current_string == '\'' && *c == 'x' && *(c - 1) == '\\')
+                    {
+                        current_string = 'x';
+                    }
+                    // NOTE the first check checks for the lifetime specifier
+                    else if((current_string == '\'' && current_string_count == 1) ||
+                       ((current_string == '\'' && *c == '\'') &&
+                       (*(c - 1) != '\\' || *(c - 2) == '\\')))
+                    {
+                        current_string = '\0';
+                        current_string_count = 0;
+                        closed_string = true;
+                    }
+                    else if((current_string == '\"' && *c == '\"') &&
+                            (*(c - 1) != '\\' || *(c - 2) == '\\'))
+                    {
+                        current_string = '\0';
+                        current_string_count = 0;
+                        closed_string = true;
+                    }
+                    else if(current_string == 'x' && *c == '\'' || *c < '0' || *c > '9')
+                    {
+                        current_string = '\0';
+                        current_string_count = 0;
+                        closed_string = true;
+                    }
+                    else if(*(c) != '\\' || *(c - 1) == '\\')
+                    {
+                        current_string_count += 1;
+                    }
+                }
+                if(current_string == '\0')
+                {
+                    if(*c == '<')
+                    {
+                        Insert(&generics, p);
+                    }
+                    else if(p.c == '>')
+                    {
+                        if(NumPairable(generics) > 0)
+                        {
+                            Insert(&generics, p);
+                        }
+                    }
+                    else if(!closed_string && (p.c == '\'' || p.c == '\"'))
+                    {
+                        current_string = *c;
+                    }
+                }
+                cur_pos.b++;
+            }
+            else if(bytes == 2)
+            {
+                ++c;
+                cur_pos.b++;
+            }
+            else if(bytes == 3)
+            {
+                for(int i = 0; *c != '\0' && i < 2; ++i, ++c);
+                cur_pos.b++;
+            }
+            else if(bytes == 4)
+            {
+                for(int i = 0; *c != '\0' && i < 3; ++i, ++c);
+                cur_pos.b++;
+            }
+        }
+    }
+
+    while(multiline_comment)
+    {
+        multiline_comment = PopCommentLevel(multiline_comment);
+    }
+
+    cur_pos = { 1, 1 };
+
+    level = 0;
+
+    current_string = '\0';
+
+    line_comment = false;
+
+    int generic_i = 0;
+
     for(const char *c = buffer; *c != '\0'; c++)
     {
+        bool closed_string = false;
+
+        IntPair current_generic = {};
+        if(generic_i < generics.len)
+        {
+            current_generic = generics.array[generic_i].pair;
+        }
         int bytes = GetUTF_8CharBytes(*c);
         if(*c == '\n')
         {
@@ -722,15 +852,56 @@ CharPositionVector ParseRustFile(const char *buffer)
             {
                 line_comment = true;
             }
-            else if(current_string == '\0')
+            else if(current_string)
             {
-                if(*c == '(' || *c == '[' || *c == '{')
+                if(current_string == '\'' && *c == 'x' && *(c - 1) == '\\')
+                {
+                    current_string = 'x';
+                }
+                // NOTE the first check checks for the lifetime specifier
+                else if((current_string == '\'' && current_string_count == 1) ||
+                   ((current_string == '\'' && *c == '\'') &&
+                   (*(c - 1) != '\\' || *(c - 2) == '\\')))
+                {
+                    current_string = '\0';
+                    current_string_count = 0;
+                    closed_string = true;
+                }
+                else if((current_string == '\"' && *c == '\"') &&
+                        (*(c - 1) != '\\' || *(c - 2) == '\\'))
+                {
+                    current_string = '\0';
+                    current_string_count = 0;
+                    closed_string = true;
+                }
+                else if(current_string == 'x' && (*c == '\'' || *c < '0' || *c > '9'))
+                {
+                    current_string = '\0';
+                    current_string_count = 0;
+                    closed_string = true;
+                }
+                else if(*(c) != '\\' || *(c - 1) == '\\')
+                {
+                    current_string_count += 1;
+                }
+            }
+            if(current_string == '\0')
+            {
+                if(*c == '(' || *c == '[' || *c == '{' ||
+                   (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
+                    && *c == '<'))
                 {
                     p.level = level;
                     s = PushCharPosition(s, p);
                     level++;
+                    if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
+                    {
+                        generic_i++;
+                    }
                 }
-                else if(p.c == ')' || p.c == ']' || p.c == '}')
+                else if(p.c == ')' || p.c == ']' || p.c == '}' ||
+                        (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
+                         && *c == '>'))
                 {
                     char opening_bracket;
                     if(p.c == ')')
@@ -744,6 +915,10 @@ CharPositionVector ParseRustFile(const char *buffer)
                     else if(p.c == '}')
                     {
                         opening_bracket = '{';
+                    }
+                    else if(p.c == '>')
+                    {
+                        opening_bracket = '<';
                     }
                     RainbowStack *copy = s;
                     while(copy && copy->data.c != opening_bracket)
@@ -764,31 +939,14 @@ CharPositionVector ParseRustFile(const char *buffer)
                         s = PopCharPosition(s);
                         level--;
                     }
+                    if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
+                    {
+                        generic_i++;
+                    }
                 }
-                else if(p.c == '\'' || p.c == '\"')
+                else if(!closed_string && (p.c == '\'' || p.c == '\"'))
                 {
                     current_string = *c;
-                }
-            }
-            else if(current_string)
-            {
-                // NOTE the first check checks for the lifetime specifier
-                if((current_string == '\'' && current_string_count == 1) ||
-                   ((current_string == '\'' && *c == '\'') &&
-                   (*(c - 1) != '\\' || *(c - 2) == '\\')))
-                {
-                    current_string = '\0';
-                    current_string_count = 0;
-                }
-                else if((current_string == '\"' && *c == '\"') &&
-                        (*(c - 1) != '\\' || *(c - 2) == '\\'))
-                {
-                    current_string = '\0';
-                    current_string_count = 0;
-                }
-                else
-                {
-                    current_string_count += 1;
                 }
             }
             cur_pos.b++;
@@ -819,6 +977,11 @@ CharPositionVector ParseRustFile(const char *buffer)
     while(multiline_comment)
     {
         multiline_comment = PopCommentLevel(multiline_comment);
+    }
+
+    if(generics.array)
+    {
+        free(generics.array);
     }
 
     return result;
@@ -899,7 +1062,7 @@ int main(int argc, const char **argv)
     }
     else if(strcmp(filetype, "rust") == 0)
     {
-        result = ParseRustFile(source_code.data);
+        result = ParseRustFile(source_code.data, (check_templates == 'Y'));
     }
     else
     {
