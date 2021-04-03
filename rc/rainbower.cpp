@@ -941,7 +941,7 @@ int main(int argc, const char **argv)
     {
         result = ParseCFile(source_code.data, false);
     }
-    if(strcmp(filetype, "cpp") == 0)
+    else if(strcmp(filetype, "cpp") == 0)
     {
         result = ParseCFile(source_code.data, (check_templates == 'Y'));
     }
