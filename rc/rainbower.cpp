@@ -184,41 +184,6 @@ bool IsRangeVisible(IntPair pair_a, IntPair pair_b, IntPair bound_a, IntPair bou
             (IsMinPair(pair_a, bound_a) && IsMaxPair(pair_b, bound_b)));
 }
 
-#define UTF_8_SINGLE_BYTE_XOR_MASK 0b00000000
-#define UTF_8_SINGLE_BYTE_AND_MASK 0b10000000
-#define UTF_8_DOUBLE_BYTE_XOR_MASK 0b11000000
-#define UTF_8_DOUBLE_BYTE_AND_MASK 0b11100000
-#define UTF_8_TRIPLE_BYTE_XOR_MASK 0b11100000
-#define UTF_8_TRIPLE_BYTE_AND_MASK 0b11110000
-#define UTF_8_QUADRUPLE_BYTE_XOR_MASK 0b11110000
-#define UTF_8_QUADRUPLE_BYTE_AND_MASK 0b11111000
-
-int GetUTF_8CharBytes(char c)
-{
-    if(((c ^ UTF_8_SINGLE_BYTE_XOR_MASK) & UTF_8_SINGLE_BYTE_AND_MASK)
-       == UTF_8_SINGLE_BYTE_XOR_MASK)
-    {
-        return 1;
-    }
-    else if(((c ^ UTF_8_DOUBLE_BYTE_XOR_MASK) & UTF_8_DOUBLE_BYTE_AND_MASK)
-            == UTF_8_DOUBLE_BYTE_XOR_MASK)
-    {
-        return 2;
-    }
-    else if(((c ^ UTF_8_TRIPLE_BYTE_XOR_MASK) & UTF_8_TRIPLE_BYTE_AND_MASK)
-            == UTF_8_TRIPLE_BYTE_XOR_MASK)
-    {
-        return 3;
-    }
-    else if(((c ^ UTF_8_QUADRUPLE_BYTE_XOR_MASK) & UTF_8_QUADRUPLE_BYTE_AND_MASK)
-            == UTF_8_QUADRUPLE_BYTE_XOR_MASK)
-    {
-        return 4;
-    }
-
-    return -1;
-}
-
 CharPositionVector ParseGenericFile(const char *buffer)
 {
     CharPositionVector result = {};
@@ -231,13 +196,12 @@ CharPositionVector ParseGenericFile(const char *buffer)
 
     for(const char *c = buffer; *c != '\0'; c++)
     {
-        int bytes = GetUTF_8CharBytes(*c);
         if(*c == '\n')
         {
             cur_pos.a++;
             cur_pos.b = 1;
         }
-        else if(bytes == 1)
+        else
         {
             CharPosition p = {};
             p.c = *c;
@@ -283,21 +247,6 @@ CharPositionVector ParseGenericFile(const char *buffer)
                     level--;
                 }
             }
-            cur_pos.b++;
-        }
-        else if(bytes == 2)
-        {
-            ++c;
-            cur_pos.b++;
-        }
-        else if(bytes == 3)
-        {
-            for(int i = 0; *c != '\0' && i < 2; ++i, ++c);
-            cur_pos.b++;
-        }
-        else if(bytes == 4)
-        {
-            for(int i = 0; *c != '\0' && i < 3; ++i, ++c);
             cur_pos.b++;
         }
     }
@@ -388,7 +337,6 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
     {
         for(const char *c = buffer; *c != '\0'; c++)
         {
-            int bytes = GetUTF_8CharBytes(*c);
             if(*c == ';' || *c == '{')
             {
                 while(DeleteLessThanSign(&templates));
@@ -399,7 +347,7 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
                 cur_pos.b = 1;
                 line_comment = false;
             }
-            else if(bytes == 1)
+            else
             {
                 CharPosition p = {};
                 p.c = *c;
@@ -459,21 +407,6 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
                 }
                 cur_pos.b++;
             }
-            else if(bytes == 2)
-            {
-                ++c;
-                cur_pos.b++;
-            }
-            else if(bytes == 3)
-            {
-                for(int i = 0; *c != '\0' && i < 2; ++i, ++c);
-                cur_pos.b++;
-            }
-            else if(bytes == 4)
-            {
-                for(int i = 0; *c != '\0' && i < 3; ++i, ++c);
-                cur_pos.b++;
-            }
         }
     }
 
@@ -496,14 +429,13 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
         {
             current_template = templates.array[template_i].pair;
         }
-        int bytes = GetUTF_8CharBytes(*c);
         if(*c == '\n')
         {
             cur_pos.a++;
             cur_pos.b = 1;
             line_comment = false;
         }
-        else if(bytes == 1)
+        else
         {
             CharPosition p = {};
             p.c = *c;
@@ -605,21 +537,6 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
             }
             cur_pos.b++;
         }
-        else if(bytes == 2)
-        {
-            ++c;
-            cur_pos.b++;
-        }
-        else if(bytes == 3)
-        {
-            for(int i = 0; *c != '\0' && i < 2; ++i, ++c);
-            cur_pos.b++;
-        }
-        else if(bytes == 4)
-        {
-            for(int i = 0; *c != '\0' && i < 3; ++i, ++c);
-            cur_pos.b++;
-        }
     }
 
     while(s)
@@ -693,7 +610,6 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
         {
             bool closed_string = false;
 
-            int bytes = GetUTF_8CharBytes(*c);
             if(*c == '{' || *c == '|' || *c == '^' || *c == '!')
             {
                 while(DeleteLessThanSign(&generics));
@@ -704,7 +620,7 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                 cur_pos.b = 1;
                 line_comment = false;
             }
-            else if(bytes == 1)
+            else
             {
                 CharPosition p = {};
                 p.c = *c;
@@ -780,21 +696,6 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                 }
                 cur_pos.b++;
             }
-            else if(bytes == 2)
-            {
-                ++c;
-                cur_pos.b++;
-            }
-            else if(bytes == 3)
-            {
-                for(int i = 0; *c != '\0' && i < 2; ++i, ++c);
-                cur_pos.b++;
-            }
-            else if(bytes == 4)
-            {
-                for(int i = 0; *c != '\0' && i < 3; ++i, ++c);
-                cur_pos.b++;
-            }
         }
     }
 
@@ -822,14 +723,13 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
         {
             current_generic = generics.array[generic_i].pair;
         }
-        int bytes = GetUTF_8CharBytes(*c);
         if(*c == '\n')
         {
             cur_pos.a++;
             cur_pos.b = 1;
             line_comment = false;
         }
-        else if(bytes == 1)
+        else
         {
             CharPosition p = {};
             p.c = *c;
@@ -949,21 +849,6 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                     current_string = *c;
                 }
             }
-            cur_pos.b++;
-        }
-        else if(bytes == 2)
-        {
-            ++c;
-            cur_pos.b++;
-        }
-        else if(bytes == 3)
-        {
-            for(int i = 0; *c != '\0' && i < 2; ++i, ++c);
-            cur_pos.b++;
-        }
-        else if(bytes == 4)
-        {
-            for(int i = 0; *c != '\0' && i < 3; ++i, ++c);
             cur_pos.b++;
         }
     }
