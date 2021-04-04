@@ -653,8 +653,8 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                         }
                         // NOTE the first check checks for the lifetime specifier
                         else if((current_string == '\'' && current_string_count == 1) ||
-                           ((current_string == '\'' && *c == '\'') &&
-                           (*(c - 1) != '\\' || *(c - 2) == '\\')))
+                                ((current_string == '\'' && *c == '\'') &&
+                                (*(c - 1) != '\\' || *(c - 2) == '\\')))
                         {
                             current_string = '\0';
                             current_string_count = 0;
@@ -667,7 +667,7 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                             current_string_count = 0;
                             closed_string = true;
                         }
-                        else if(current_string == 'x' && *c == '\'' || *c < '0' || *c > '9')
+                        else if(current_string == 'x' && (*c == '\'' || *c < '0' || *c > '9'))
                         {
                             current_string = '\0';
                             current_string_count = 0;
@@ -688,7 +688,10 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                         {
                             if(NumPairable(generics) > 0)
                             {
-                                Insert(&generics, p);
+                                if(*(c - 1) != '-')
+                                {
+                                    Insert(&generics, p);
+                                }
                             }
                         }
                         else if(!closed_string && (p.c == '\'' || p.c == '\"'))
@@ -765,8 +768,8 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                     }
                     // NOTE the first check checks for the lifetime specifier
                     else if((current_string == '\'' && current_string_count == 1) ||
-                       ((current_string == '\'' && *c == '\'') &&
-                       (*(c - 1) != '\\' || *(c - 2) == '\\')))
+                            ((current_string == '\'' && *c == '\'') &&
+                            (*(c - 1) != '\\' || *(c - 2) == '\\')))
                     {
                         current_string = '\0';
                         current_string_count = 0;
