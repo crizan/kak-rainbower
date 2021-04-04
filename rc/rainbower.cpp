@@ -643,58 +643,61 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                 {
                     line_comment = true;
                 }
-                else if(current_string)
+                else
                 {
-                    if(current_string == '\'' && *c == 'x' && *(c - 1) == '\\')
+                    if(current_string)
                     {
-                        current_string = 'x';
+                        if(current_string == '\'' && *c == 'x' && *(c - 1) == '\\')
+                        {
+                            current_string = 'x';
+                        }
+                        // NOTE the first check checks for the lifetime specifier
+                        else if((current_string == '\'' && current_string_count == 1) ||
+                           ((current_string == '\'' && *c == '\'') &&
+                           (*(c - 1) != '\\' || *(c - 2) == '\\')))
+                        {
+                            current_string = '\0';
+                            current_string_count = 0;
+                            closed_string = true;
+                        }
+                        else if((current_string == '\"' && *c == '\"') &&
+                                (*(c - 1) != '\\' || *(c - 2) == '\\'))
+                        {
+                            current_string = '\0';
+                            current_string_count = 0;
+                            closed_string = true;
+                        }
+                        else if(current_string == 'x' && *c == '\'' || *c < '0' || *c > '9')
+                        {
+                            current_string = '\0';
+                            current_string_count = 0;
+                            closed_string = true;
+                        }
+                        else if(*(c) != '\\' || *(c - 1) == '\\')
+                        {
+                            current_string_count += 1;
+                        }
                     }
-                    // NOTE the first check checks for the lifetime specifier
-                    else if((current_string == '\'' && current_string_count == 1) ||
-                       ((current_string == '\'' && *c == '\'') &&
-                       (*(c - 1) != '\\' || *(c - 2) == '\\')))
+                    if(current_string == '\0')
                     {
-                        current_string = '\0';
-                        current_string_count = 0;
-                        closed_string = true;
-                    }
-                    else if((current_string == '\"' && *c == '\"') &&
-                            (*(c - 1) != '\\' || *(c - 2) == '\\'))
-                    {
-                        current_string = '\0';
-                        current_string_count = 0;
-                        closed_string = true;
-                    }
-                    else if(current_string == 'x' && *c == '\'' || *c < '0' || *c > '9')
-                    {
-                        current_string = '\0';
-                        current_string_count = 0;
-                        closed_string = true;
-                    }
-                    else if(*(c) != '\\' || *(c - 1) == '\\')
-                    {
-                        current_string_count += 1;
-                    }
-                }
-                if(current_string == '\0')
-                {
-                    if(*c == '<')
-                    {
-                        Insert(&generics, p);
-                    }
-                    else if(p.c == '>')
-                    {
-                        if(NumPairable(generics) > 0)
+                        if(*c == '<')
                         {
                             Insert(&generics, p);
                         }
+                        else if(p.c == '>')
+                        {
+                            if(NumPairable(generics) > 0)
+                            {
+                                Insert(&generics, p);
+                            }
+                        }
+                        else if(!closed_string && (p.c == '\'' || p.c == '\"'))
+                        {
+                            current_string = *c;
+                        }
                     }
-                    else if(!closed_string && (p.c == '\'' || p.c == '\"'))
-                    {
-                        current_string = *c;
-                    }
+                    cur_pos.b++;
                 }
-                cur_pos.b++;
             }
         }
     }
@@ -752,104 +755,107 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
             {
                 line_comment = true;
             }
-            else if(current_string)
+            else
             {
-                if(current_string == '\'' && *c == 'x' && *(c - 1) == '\\')
+                if(current_string)
                 {
-                    current_string = 'x';
-                }
-                // NOTE the first check checks for the lifetime specifier
-                else if((current_string == '\'' && current_string_count == 1) ||
-                   ((current_string == '\'' && *c == '\'') &&
-                   (*(c - 1) != '\\' || *(c - 2) == '\\')))
-                {
-                    current_string = '\0';
-                    current_string_count = 0;
-                    closed_string = true;
-                }
-                else if((current_string == '\"' && *c == '\"') &&
-                        (*(c - 1) != '\\' || *(c - 2) == '\\'))
-                {
-                    current_string = '\0';
-                    current_string_count = 0;
-                    closed_string = true;
-                }
-                else if(current_string == 'x' && (*c == '\'' || *c < '0' || *c > '9'))
-                {
-                    current_string = '\0';
-                    current_string_count = 0;
-                    closed_string = true;
-                }
-                else if(*(c) != '\\' || *(c - 1) == '\\')
-                {
-                    current_string_count += 1;
-                }
-            }
-            if(current_string == '\0')
-            {
-                if(*c == '(' || *c == '[' || *c == '{' ||
-                   (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
-                    && *c == '<'))
-                {
-                    p.level = level;
-                    s = PushCharPosition(s, p);
-                    level++;
-                    if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
+                    if(current_string == '\'' && *c == 'x' && *(c - 1) == '\\')
                     {
-                        generic_i++;
+                        current_string = 'x';
+                    }
+                    // NOTE the first check checks for the lifetime specifier
+                    else if((current_string == '\'' && current_string_count == 1) ||
+                       ((current_string == '\'' && *c == '\'') &&
+                       (*(c - 1) != '\\' || *(c - 2) == '\\')))
+                    {
+                        current_string = '\0';
+                        current_string_count = 0;
+                        closed_string = true;
+                    }
+                    else if((current_string == '\"' && *c == '\"') &&
+                            (*(c - 1) != '\\' || *(c - 2) == '\\'))
+                    {
+                        current_string = '\0';
+                        current_string_count = 0;
+                        closed_string = true;
+                    }
+                    else if(current_string == 'x' && (*c == '\'' || *c < '0' || *c > '9'))
+                    {
+                        current_string = '\0';
+                        current_string_count = 0;
+                        closed_string = true;
+                    }
+                    else if(*(c) != '\\' || *(c - 1) == '\\')
+                    {
+                        current_string_count += 1;
                     }
                 }
-                else if(p.c == ')' || p.c == ']' || p.c == '}' ||
-                        (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
-                         && *c == '>'))
+                if(current_string == '\0')
                 {
-                    char opening_bracket;
-                    if(p.c == ')')
+                    if(*c == '(' || *c == '[' || *c == '{' ||
+                       (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
+                        && *c == '<'))
                     {
-                        opening_bracket = '(';
-                    }
-                    else if(p.c == ']')
-                    {
-                        opening_bracket = '[';
-                    }
-                    else if(p.c == '}')
-                    {
-                        opening_bracket = '{';
-                    }
-                    else if(p.c == '>')
-                    {
-                        opening_bracket = '<';
-                    }
-                    RainbowStack *copy = s;
-                    while(copy && copy->data.c != opening_bracket)
-                    {
-                        copy = copy->previous;
-                    }
-                    if(copy)
-                    {
-                        while(s != copy)
+                        p.level = level;
+                        s = PushCharPosition(s, p);
+                        level++;
+                        if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
                         {
+                            generic_i++;
+                        }
+                    }
+                    else if(p.c == ')' || p.c == ']' || p.c == '}' ||
+                            (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
+                             && *c == '>'))
+                    {
+                        char opening_bracket;
+                        if(p.c == ')')
+                        {
+                            opening_bracket = '(';
+                        }
+                        else if(p.c == ']')
+                        {
+                            opening_bracket = '[';
+                        }
+                        else if(p.c == '}')
+                        {
+                            opening_bracket = '{';
+                        }
+                        else if(p.c == '>')
+                        {
+                            opening_bracket = '<';
+                        }
+                        RainbowStack *copy = s;
+                        while(copy && copy->data.c != opening_bracket)
+                        {
+                            copy = copy->previous;
+                        }
+                        if(copy)
+                        {
+                            while(s != copy)
+                            {
+                                s = PopCharPosition(s);
+                                level--;
+                            }
+                            CharPosition p2 = s->data;
+                            p.level = p2.level;
+                            Insert(&result, p);
+                            Insert(&result, p2);
                             s = PopCharPosition(s);
                             level--;
                         }
-                        CharPosition p2 = s->data;
-                        p.level = p2.level;
-                        Insert(&result, p);
-                        Insert(&result, p2);
-                        s = PopCharPosition(s);
-                        level--;
+                        if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
+                        {
+                            generic_i++;
+                        }
                     }
-                    if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
+                    else if(!closed_string && (p.c == '\'' || p.c == '\"'))
                     {
-                        generic_i++;
+                        current_string = *c;
                     }
                 }
-                else if(!closed_string && (p.c == '\'' || p.c == '\"'))
-                {
-                    current_string = *c;
-                }
+                cur_pos.b++;
             }
-            cur_pos.b++;
         }
     }
 
