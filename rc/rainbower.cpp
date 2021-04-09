@@ -98,37 +98,52 @@ void Insert(CharPositionVector *vector, CharPosition elem)
     vector->len++;
 }
 
+void Free(CharPositionVector *vector)
+{
+    if(vector->array)
+    {
+        free(vector->array);
+        vector->array = 0;
+    }
+}
+
 struct RainbowStack
 {
     CharPosition data;
     struct RainbowStack *previous;
 };
 
-RainbowStack *PushCharPosition(RainbowStack *s, CharPosition data)
+void PushCharPosition(RainbowStack **s, CharPosition data)
 {
     RainbowStack *new_element = (RainbowStack *)malloc(sizeof(RainbowStack));
 
     if(new_element)
     {
         new_element->data = data;
-        new_element->previous = s;
+        new_element->previous = *s;
     }
 
-    return new_element;
+    *s = new_element;
 }
 
-RainbowStack *PopCharPosition(RainbowStack *s)
+void PopCharPosition(RainbowStack **s)
 {
-    if(s)
+    if(*s)
     {
-        RainbowStack *previous = s->previous;
+        RainbowStack *previous = (*s)->previous;
 
-        free(s);
+        free(*s);
 
-        return previous;
+        *s = previous;
     }
+}
 
-    return NULL;
+void Free(RainbowStack **s)
+{
+    while(*s)
+    {
+        PopCharPosition(s);
+    }
 }
 
 bool IsMaxPair(IntPair pair_a, IntPair pair_b)
@@ -184,6 +199,43 @@ bool IsRangeVisible(IntPair pair_a, IntPair pair_b, IntPair bound_a, IntPair bou
             (IsMinPair(pair_a, bound_a) && IsMaxPair(pair_b, bound_b)));
 }
 
+char GetMatchingPair(char c)
+{
+    switch(c)
+    {
+        case ')': return '(';
+        case ']': return '[';
+        case '}': return '{';
+        case '>': return '<';
+        default: return 0;
+    }
+}
+
+int InsertPair(CharPositionVector *result, RainbowStack **s, int level, char opening_bracket, CharPosition p)
+{
+    RainbowStack *copy = *s;
+    while(copy && copy->data.c != opening_bracket)
+    {
+        copy = copy->previous;
+    }
+    if(copy)
+    {
+        while(*s != copy)
+        {
+            PopCharPosition(s);
+            level--;
+        }
+        CharPosition p2 = (*s)->data;
+        p.level = p2.level;
+        Insert(result, p);
+        Insert(result, p2);
+        PopCharPosition(s);
+        level--;
+    }
+
+    return level;
+}
+
 CharPositionVector ParseGenericFile(const char *buffer)
 {
     CharPositionVector result = {};
@@ -209,52 +261,19 @@ CharPositionVector ParseGenericFile(const char *buffer)
             if(*c == '(' || *c == '[' || *c == '{')
             {
                 p.level = level;
-                s = PushCharPosition(s, p);
+                PushCharPosition(&s, p);
                 level++;
             }
             else if(p.c == ')' || p.c == ']' || p.c == '}')
             {
-                char opening_bracket;
-                if(p.c == ')')
-                {
-                    opening_bracket = '(';
-                }
-                if(p.c == ']')
-                {
-                    opening_bracket = '[';
-                }
-                if(p.c == '}')
-                {
-                    opening_bracket = '{';
-                }
-                RainbowStack *copy = s;
-                while(copy && copy->data.c != opening_bracket)
-                {
-                    copy = copy->previous;
-                }
-                if(copy)
-                {
-                    while(s != copy)
-                    {
-                        s = PopCharPosition(s);
-                        level--;
-                    }
-                    CharPosition p2 = s->data;
-                    p.level = p2.level;
-                    Insert(&result, p);
-                    Insert(&result, p2);
-                    s = PopCharPosition(s);
-                    level--;
-                }
+                char opening_bracket = GetMatchingPair(*c);
+                level = InsertPair(&result, &s, level, opening_bracket, p);
             }
             cur_pos.b++;
         }
     }
 
-    while(s)
-    {
-        s = PopCharPosition(s);
-    }
+    Free(&s);
 
     return result;
 }
@@ -315,6 +334,42 @@ int NumPairable(CharPositionVector vec)
     return count;
 }
 
+struct StringParsingInfo
+{
+    char current_string;
+    int current_string_count;
+    bool closed_string;
+};
+
+void CContinueString(StringParsingInfo *info, const char *c)
+{
+    if((info->current_string == '\'' && *c == '\'') &&
+       (*(c - 1) != '\\' || *(c - 2) == '\\'))
+    {
+        info->current_string = '\0';
+    }
+    else if((info->current_string == '\"' && *c == '\"') &&
+            (*(c - 1) != '\\' || *(c - 2) == '\\'))
+    {
+        info->current_string = '\0';
+    }
+}
+
+bool CCheckCloseMultilineComment(const char *c, const char *multiline_comment)
+{
+    return (*c == '/' && *(c - 1) == '*' && c != multiline_comment + 1);
+}
+
+bool CCheckStartMultilineComment(const char *c, const char *buffer, const char *last_closed_comment)
+{
+    return (last_closed_comment != (c - 1) && *c == '*' && c != buffer && *(c - 1) == '/');
+}
+
+bool CCheckStartLineComment(const char *c, const char *buffer, const char *last_closed_comment)
+{
+    return (last_closed_comment != (c - 1) && *c == '/' && c != buffer && *(c - 1) == '/');
+}
+
 CharPositionVector ParseCFile(const char *buffer, bool check_templates)
 {
     CharPositionVector result = {};
@@ -325,11 +380,15 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
 
     int level = 0;
 
-    char current_string = '\0';
+    StringParsingInfo info;
+
+    info.current_string = '\0';
+    info.current_string_count = 0;
 
     const char *multiline_comment = NULL;
 
     bool line_comment = false;
+    const char *last_closed_comment = 0;
 
     CharPositionVector templates = {};
 
@@ -357,20 +416,21 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
                 }
                 else if(multiline_comment)
                 {
-                    if(*c == '/' && *(c - 1) == '*' && c != multiline_comment + 1)
+                    if(CCheckCloseMultilineComment(c, multiline_comment))
                     {
                         multiline_comment = NULL;
+                        last_closed_comment = c;
                     }
                 }
-                else if(current_string == '\0' && *c == '*' && c != buffer && *(c - 1) == '/')
+                else if(info.current_string == '\0' && CCheckStartMultilineComment(c, buffer, last_closed_comment))
                 {
                     multiline_comment = c;
                 }
-                else if(current_string == '\0' && *c == '/' && c != buffer && *(c - 1) == '/')
+                else if(info.current_string == '\0' && CCheckStartLineComment(c, buffer, last_closed_comment))
                 {
                     line_comment = true;
                 }
-                else if(current_string == '\0')
+                else if(info.current_string == '\0')
                 {
                     if(*c == '<')
                     {
@@ -389,21 +449,12 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
                     }
                     else if(p.c == '\'' || p.c == '\"')
                     {
-                        current_string = *c;
+                        info.current_string = *c;
                     }
                 }
-                else if(current_string)
+                else if(info.current_string)
                 {
-                    if((current_string == '\'' && *c == '\'') &&
-                       (*(c - 1) != '\\' || *(c - 2) == '\\'))
-                    {
-                        current_string = '\0';
-                    }
-                    else if((current_string == '\"' && *c == '\"') &&
-                            (*(c - 1) != '\\' || *(c - 2) == '\\'))
-                    {
-                        current_string = '\0';
-                    }
+                    CContinueString(&info, c);
                 }
                 cur_pos.b++;
             }
@@ -414,11 +465,13 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
 
     level = 0;
 
-    current_string = '\0';
+    info.current_string = '\0';
+    info.current_string_count = 0;
 
     multiline_comment = NULL;
 
     line_comment = false;
+    last_closed_comment = 0;
 
     int template_i = 0;
 
@@ -445,27 +498,28 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
             }
             else if(multiline_comment)
             {
-                if(*c == '/' && *(c - 1) == '*' && c != multiline_comment + 1)
+                if(CCheckCloseMultilineComment(c, multiline_comment))
                 {
                     multiline_comment = NULL;
+                    last_closed_comment = c;
                 }
             }
-            else if(current_string == '\0' && *c == '*' && c != buffer && *(c - 1) == '/')
+            else if(info.current_string == '\0' && CCheckStartMultilineComment(c, buffer, last_closed_comment))
             {
                 multiline_comment = c;
             }
-            else if(current_string == '\0' && *c == '/' && c != buffer && *(c - 1) == '/')
+            else if(info.current_string == '\0' && CCheckStartLineComment(c, buffer, last_closed_comment))
             {
                 line_comment = true;
             }
-            else if(current_string == '\0')
+            else if(info.current_string == '\0')
             {
                 if(*c == '(' || *c == '[' || *c == '{' ||
                    (current_template.a == cur_pos.a && current_template.b == cur_pos.b
                     && *c == '<'))
                 {
                     p.level = level;
-                    s = PushCharPosition(s, p);
+                    PushCharPosition(&s, p);
                     level++;
                     if(current_template.a == cur_pos.a && current_template.b == cur_pos.b)
                     {
@@ -476,42 +530,8 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
                        (current_template.a == cur_pos.a && current_template.b == cur_pos.b
                         && p.c == '>'))
                 {
-                    char opening_bracket;
-                    if(p.c == ')')
-                    {
-                        opening_bracket = '(';
-                    }
-                    else if(p.c == ']')
-                    {
-                        opening_bracket = '[';
-                    }
-                    else if(p.c == '}')
-                    {
-                        opening_bracket = '{';
-                    }
-                    else if(p.c == '>')
-                    {
-                        opening_bracket = '<';
-                    }
-                    RainbowStack *copy = s;
-                    while(copy && copy->data.c != opening_bracket)
-                    {
-                        copy = copy->previous;
-                    }
-                    if(copy)
-                    {
-                        while(s != copy)
-                        {
-                            s = PopCharPosition(s);
-                            level--;
-                        }
-                        CharPosition p2 = s->data;
-                        p.level = p2.level;
-                        Insert(&result, p);
-                        Insert(&result, p2);
-                        s = PopCharPosition(s);
-                        level--;
-                    }
+                    char opening_bracket = GetMatchingPair(*c);
+                    level = InsertPair(&result, &s, level, opening_bracket, p);
                     if(current_template.a == cur_pos.a && current_template.b == cur_pos.b)
                     {
                         template_i++;
@@ -519,35 +539,19 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
                 }
                 else if(p.c == '\'' || p.c == '\"')
                 {
-                    current_string = *c;
+                    info.current_string = *c;
                 }
             }
-            else if(current_string)
+            else if(info.current_string)
             {
-                if((current_string == '\'' && *c == '\'') &&
-                   (*(c - 1) != '\\' || *(c - 2) == '\\'))
-                {
-                    current_string = '\0';
-                }
-                else if((current_string == '\"' && *c == '\"') &&
-                        (*(c - 1) != '\\' || *(c - 2) == '\\'))
-                {
-                    current_string = '\0';
-                }
+                CContinueString(&info, c);
             }
             cur_pos.b++;
         }
     }
 
-    while(s)
-    {
-        s = PopCharPosition(s);
-    }
-
-    if(templates.array)
-    {
-        free(templates.array);
-    }
+    Free(&s);
+    Free(&templates);
 
     return result;
 }
@@ -558,31 +562,86 @@ struct MultilineCommentsStack
     MultilineCommentsStack *previous;
 };
 
-MultilineCommentsStack *PushCommentLevel(MultilineCommentsStack *s, const char *ptr)
+void PushCommentLevel(MultilineCommentsStack **s, const char *ptr)
 {
     MultilineCommentsStack *new_element = (MultilineCommentsStack*)malloc(sizeof(MultilineCommentsStack));
 
     if(new_element)
     {
-        new_element->ptr= ptr;
-        new_element->previous = s;
+        new_element->ptr = ptr;
+        new_element->previous = *s;
     }
 
-    return new_element;
+    *s = new_element;
 }
 
-MultilineCommentsStack *PopCommentLevel(MultilineCommentsStack *s)
+void PopCommentLevel(MultilineCommentsStack **s)
 {
-    if(s)
+    if(*s)
     {
-        MultilineCommentsStack *previous = s->previous;
+        MultilineCommentsStack *previous = (*s)->previous;
 
-        free(s);
+        free(*s);
 
-        return previous;
+        *s = previous;
     }
+}
 
-    return NULL;
+void Free(MultilineCommentsStack **s)
+{
+    while(*s)
+    {
+        PopCommentLevel(s);
+    }
+}
+
+void RustContinueString(StringParsingInfo *info, const char *c)
+{
+    if(info->current_string == '\'' && *c == 'x' && *(c - 1) == '\\')
+    {
+        info->current_string = 'x';
+    }
+    // NOTE the first check checks for the lifetime specifier
+    else if((info->current_string == '\'' && info->current_string_count == 1) ||
+            ((info->current_string == '\'' && *c == '\'') &&
+            (*(c - 1) != '\\' || *(c - 2) == '\\')))
+    {
+        info->current_string = '\0';
+        info->current_string_count = 0;
+        info->closed_string = true;
+    }
+    else if((info->current_string == '\"' && *c == '\"') &&
+            (*(c - 1) != '\\' || *(c - 2) == '\\'))
+    {
+        info->current_string = '\0';
+        info->current_string_count = 0;
+        info->closed_string = true;
+    }
+    else if(info->current_string == 'x' && (*c == '\'' || *c < '0' || *c > '9'))
+    {
+        info->current_string = '\0';
+        info->current_string_count = 0;
+        info->closed_string = true;
+    }
+    else if(*(c) != '\\' || *(c - 1) == '\\')
+    {
+        info->current_string_count += 1;
+    }
+}
+
+bool RustCheckCloseMultilineComment(const char *c, const char *multiline_comment)
+{
+    return (*c == '/' && *(c - 1) == '*' && c != multiline_comment + 1);
+}
+
+bool RustCheckStartMultilineComment(const char *c, const char *buffer, const char *last_closed_comment)
+{
+    return (last_closed_comment != (c - 1) && *c == '*' && c != buffer && *(c - 1) == '/');
+}
+
+bool RustCheckStartLineComment(const char *c, const char *buffer, const char *last_closed_comment)
+{
+    return (last_closed_comment != (c - 1) && *c == '/' && c != buffer && *(c - 1) == '/');
 }
 
 CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
@@ -597,18 +656,20 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
 
     int level = 0;
 
-    char current_string = '\0';
-    int current_string_count = 0;
+    StringParsingInfo info;
+    info.current_string = '\0';
+    info.current_string_count = 0;
 
     MultilineCommentsStack *multiline_comment = NULL;
 
     bool line_comment = false;
+    const char *last_closed_comment = 0;
 
     if(check_generics)
     {
         for(const char *c = buffer; *c != '\0'; c++)
         {
-            bool closed_string = false;
+            info.closed_string = false;
 
             if(*c == '{' || *c == '|' || *c == '^' || *c == '!')
             {
@@ -628,57 +689,29 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                 if(line_comment)
                 {
                 }
-                else if(current_string == '\0' && *c == '*' && c != buffer && *(c - 1) == '/')
+                else if(info.current_string == '\0' && RustCheckStartMultilineComment(c, buffer, last_closed_comment))
                 {
-                    multiline_comment = PushCommentLevel(multiline_comment, c);
+                    PushCommentLevel(&multiline_comment, c);
                 }
                 else if(multiline_comment)
                 {
-                    if(*c == '/' && *(c - 1) == '*' && c != multiline_comment->ptr + 1)
+                    if(RustCheckCloseMultilineComment(c, multiline_comment->ptr))
                     {
-                        multiline_comment = PopCommentLevel(multiline_comment);
+                        PopCommentLevel(&multiline_comment);
+                        last_closed_comment = c;
                     }
                 }
-                else if(current_string == '\0' && *c == '/' && c != buffer && *(c - 1) == '/')
+                else if(info.current_string == '\0' && RustCheckStartLineComment(c, buffer, last_closed_comment))
                 {
                     line_comment = true;
                 }
                 else
                 {
-                    if(current_string)
+                    if(info.current_string)
                     {
-                        if(current_string == '\'' && *c == 'x' && *(c - 1) == '\\')
-                        {
-                            current_string = 'x';
-                        }
-                        // NOTE the first check checks for the lifetime specifier
-                        else if((current_string == '\'' && current_string_count == 1) ||
-                                ((current_string == '\'' && *c == '\'') &&
-                                (*(c - 1) != '\\' || *(c - 2) == '\\')))
-                        {
-                            current_string = '\0';
-                            current_string_count = 0;
-                            closed_string = true;
-                        }
-                        else if((current_string == '\"' && *c == '\"') &&
-                                (*(c - 1) != '\\' || *(c - 2) == '\\'))
-                        {
-                            current_string = '\0';
-                            current_string_count = 0;
-                            closed_string = true;
-                        }
-                        else if(current_string == 'x' && (*c == '\'' || *c < '0' || *c > '9'))
-                        {
-                            current_string = '\0';
-                            current_string_count = 0;
-                            closed_string = true;
-                        }
-                        else if(*(c) != '\\' || *(c - 1) == '\\')
-                        {
-                            current_string_count += 1;
-                        }
+                        RustContinueString(&info, c);
                     }
-                    if(current_string == '\0')
+                    if(info.current_string == '\0')
                     {
                         if(*c == '<')
                         {
@@ -694,9 +727,9 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                                 }
                             }
                         }
-                        else if(!closed_string && (p.c == '\'' || p.c == '\"'))
+                        else if(!info.closed_string && (p.c == '\'' || p.c == '\"'))
                         {
-                            current_string = *c;
+                            info.current_string = *c;
                         }
                     }
                     cur_pos.b++;
@@ -705,24 +738,23 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
         }
     }
 
-    while(multiline_comment)
-    {
-        multiline_comment = PopCommentLevel(multiline_comment);
-    }
+    Free(&multiline_comment);
 
     cur_pos = { 1, 1 };
 
     level = 0;
 
-    current_string = '\0';
+    info.current_string = '\0';
+    info.current_string_count = 0;
 
     line_comment = false;
+    last_closed_comment = 0;
 
     int generic_i = 0;
 
     for(const char *c = buffer; *c != '\0'; c++)
     {
-        bool closed_string = false;
+        info.closed_string = false;
 
         IntPair current_generic = {};
         if(generic_i < generics.len)
@@ -743,64 +775,36 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
             if(line_comment)
             {
             }
-            else if(current_string == '\0' && *c == '*' && c != buffer && *(c - 1) == '/')
+            else if(info.current_string == '\0' && RustCheckStartMultilineComment(c, buffer, last_closed_comment))
             {
-                multiline_comment = PushCommentLevel(multiline_comment, c);
+                PushCommentLevel(&multiline_comment, c);
             }
             else if(multiline_comment)
             {
-                if(*c == '/' && *(c - 1) == '*' && c != multiline_comment->ptr + 1)
+                if(RustCheckCloseMultilineComment(c, multiline_comment->ptr))
                 {
-                    multiline_comment = PopCommentLevel(multiline_comment);
+                    PopCommentLevel(&multiline_comment);
+                    last_closed_comment = c;
                 }
             }
-            else if(current_string == '\0' && *c == '/' && c != buffer && *(c - 1) == '/')
+            else if(info.current_string == '\0' && RustCheckStartLineComment(c, buffer, last_closed_comment))
             {
                 line_comment = true;
             }
             else
             {
-                if(current_string)
+                if(info.current_string)
                 {
-                    if(current_string == '\'' && *c == 'x' && *(c - 1) == '\\')
-                    {
-                        current_string = 'x';
-                    }
-                    // NOTE the first check checks for the lifetime specifier
-                    else if((current_string == '\'' && current_string_count == 1) ||
-                            ((current_string == '\'' && *c == '\'') &&
-                            (*(c - 1) != '\\' || *(c - 2) == '\\')))
-                    {
-                        current_string = '\0';
-                        current_string_count = 0;
-                        closed_string = true;
-                    }
-                    else if((current_string == '\"' && *c == '\"') &&
-                            (*(c - 1) != '\\' || *(c - 2) == '\\'))
-                    {
-                        current_string = '\0';
-                        current_string_count = 0;
-                        closed_string = true;
-                    }
-                    else if(current_string == 'x' && (*c == '\'' || *c < '0' || *c > '9'))
-                    {
-                        current_string = '\0';
-                        current_string_count = 0;
-                        closed_string = true;
-                    }
-                    else if(*(c) != '\\' || *(c - 1) == '\\')
-                    {
-                        current_string_count += 1;
-                    }
+                    RustContinueString(&info, c);
                 }
-                if(current_string == '\0')
+                if(info.current_string == '\0')
                 {
                     if(*c == '(' || *c == '[' || *c == '{' ||
                        (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
                         && *c == '<'))
                     {
                         p.level = level;
-                        s = PushCharPosition(s, p);
+                        PushCharPosition(&s, p);
                         level++;
                         if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
                         {
@@ -811,50 +815,16 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                             (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
                              && *c == '>'))
                     {
-                        char opening_bracket;
-                        if(p.c == ')')
-                        {
-                            opening_bracket = '(';
-                        }
-                        else if(p.c == ']')
-                        {
-                            opening_bracket = '[';
-                        }
-                        else if(p.c == '}')
-                        {
-                            opening_bracket = '{';
-                        }
-                        else if(p.c == '>')
-                        {
-                            opening_bracket = '<';
-                        }
-                        RainbowStack *copy = s;
-                        while(copy && copy->data.c != opening_bracket)
-                        {
-                            copy = copy->previous;
-                        }
-                        if(copy)
-                        {
-                            while(s != copy)
-                            {
-                                s = PopCharPosition(s);
-                                level--;
-                            }
-                            CharPosition p2 = s->data;
-                            p.level = p2.level;
-                            Insert(&result, p);
-                            Insert(&result, p2);
-                            s = PopCharPosition(s);
-                            level--;
-                        }
+                        char opening_bracket = GetMatchingPair(*c);
+                        level = InsertPair(&result, &s, level, opening_bracket, p);
                         if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
                         {
                             generic_i++;
                         }
                     }
-                    else if(!closed_string && (p.c == '\'' || p.c == '\"'))
+                    else if(!info.closed_string && (p.c == '\'' || p.c == '\"'))
                     {
-                        current_string = *c;
+                        info.current_string = *c;
                     }
                 }
                 cur_pos.b++;
@@ -862,21 +832,9 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
         }
     }
 
-
-    while(s)
-    {
-        s = PopCharPosition(s);
-    }
-
-    while(multiline_comment)
-    {
-        multiline_comment = PopCommentLevel(multiline_comment);
-    }
-
-    if(generics.array)
-    {
-        free(generics.array);
-    }
+    Free(&s);
+    Free(&generics);
+    Free(&multiline_comment);
 
     return result;
 }
@@ -889,10 +847,19 @@ struct String
     size_t length;
 };
 
+void CopyString(char *dest, const char *src, size_t max_size)
+{
+    while(max_size-- > 0)
+    {
+        *dest++ = *src++;
+    }
+    *dest = 0;
+}
+
 void AppendCStringToString(String *s, const char *to_append, size_t chars)
 {
-    s->data = (char *)realloc(s->data, s->length + chars + 1);
-    snprintf(s->data + s->length, chars + 1, "%s", to_append);
+    s->data = (char *)realloc(s->data, s->length + chars + 2);
+    CopyString(s->data + s->length, to_append, chars + 1);
     s->length += chars;
 }
 
@@ -935,7 +902,7 @@ int main(int argc, const char **argv)
     String source_code = {};
 
     char buffer[BUFFER_SIZE] = {};
-    while(int bytes_read = read(STDIN_FILENO, buffer, BUFFER_SIZE))
+    while(int bytes_read = read(STDIN_FILENO, buffer, BUFFER_SIZE - 1))
     {
         AppendCStringToString(&source_code, buffer, bytes_read);
     }
@@ -1018,8 +985,6 @@ int main(int argc, const char **argv)
         }
     }
 
-    if(result.array)
-    {
-        free(result.array);
-    }
+    Free(&result);
+    free(source_code.data);
 }
