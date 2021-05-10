@@ -76,8 +76,6 @@ struct CharPosition
     int level;
 };
 
-#define BLOCK_SIZE 100
-
 struct CharPositionVector
 {
     CharPosition *array;
@@ -87,11 +85,18 @@ struct CharPositionVector
 
 void Insert(CharPositionVector *vector, CharPosition elem)
 {
-    if(vector->len == vector->size)
+    if(vector->array == NULL)
     {
-        int alloc_size = sizeof(CharPosition) * (vector->size + BLOCK_SIZE);
+        vector->array = (CharPosition *)malloc(2 * sizeof(CharPosition));
+        vector->size = 2;
+        vector->len = 0;
+    }
+    else if(vector->len == vector->size)
+    {
+        int new_size = vector->size * 1.5f;
+        int alloc_size = sizeof(CharPosition) * new_size;
         vector->array = (CharPosition *)realloc(vector->array, alloc_size);
-        vector->size += BLOCK_SIZE;
+        vector->size = new_size;
     }
 
     vector->array[vector->len] = elem;
