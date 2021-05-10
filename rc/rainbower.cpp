@@ -884,6 +884,9 @@ int main(int argc, const char **argv)
     window_bottom.a = window_top.a + window_size.a;
     window_bottom.b = window_top.b + window_size.b;
 
+    window_top.a -= 30;
+    window_bottom.a += 30;
+
     char check_templates = argv[8][0];
 
     int i = 9;
@@ -938,9 +941,7 @@ int main(int argc, const char **argv)
     CharPosition cursor_range_a = {};
     CharPosition cursor_range_b = {};
 
-    {
-        printf("eval -client %s set-option window rainbow %s ", client, timestamp);
-    }
+    printf("eval -client %s set-option window rainbow %s ", client, timestamp);
 
     for(int k = result.len - 2; k >= 0; k -= 2)
     {
@@ -984,8 +985,8 @@ int main(int argc, const char **argv)
             if(IsRangeVisible(cursor_range_a.pair, cursor_range_b.pair, window_top, window_bottom))
             {
                 printf("%d.%d,%d.%d|default,%s ",
-                    cursor_range_a.pair.a, cursor_range_a.pair.b,
-                    cursor_range_b.pair.a, cursor_range_b.pair.b, color);
+                       cursor_range_a.pair.a, cursor_range_a.pair.b,
+                       cursor_range_b.pair.a, cursor_range_b.pair.b, color);
             }
         }
     }
