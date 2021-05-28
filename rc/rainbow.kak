@@ -6,6 +6,7 @@
 declare-option -hidden range-specs rainbow
 declare-option -hidden str-list window_range
 declare-option -hidden str kak_rainbower_source %sh{ echo "${kak_source%/*}" }
+declare-option -hidden int rainbower_last_timestamp -1
 # Rainbow colors
 declare-option str-list rainbow_colors
 # colors from https://github.com/absop/RainbowBrackets
@@ -19,9 +20,20 @@ declare-option str rainbow_check_templates
 set-option global rainbow_check_templates "n"
 
 define-command rainbow-enable-window -docstring "enable rainbow parentheses for this window" %{
-    hook -group rainbow window NormalIdle .* %{ rainbow-view }
+    hook -group rainbow window NormalIdle .* %{
+        %sh{
+            if [ ${kak_opt_rainbower_last_timestamp} -eq ${kak_timestamp} ]; then
+                echo rainbow-full-view
+            else
+                echo nop
+            fi
+        }
+        set-option buffer rainbower_last_timestamp %val{timestamp}
+    }
     hook -group rainbow window InsertIdle .* %{ rainbow-view }
     add-highlighter window/rainbow ranges rainbow
+    rainbow-full-view
+    set-option buffer rainbower_last_timestamp %val{timestamp}
 }
 
 define-command rainbow-disable-window -docstring "disable rainbow parentheses for this window" %{
@@ -43,6 +55,17 @@ define-command -hidden rainbow-view %{
             execute-keys -save-regs _ ' ;Z<ret>' # save original main selection in ^ reg
             evaluate-commands -save-regs '|' %{
                 execute-keys -draft '%<a-|>${kak_opt_kak_rainbower_source}/rainbower ${kak_client} "${kak_timestamp}" ${kak_opt_rainbow_mode} $(echo $kak_reg_caret | cut -d" " -f2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f1-2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f3-4) $kak_opt_filetype "$kak_opt_rainbow_check_templates" $kak_opt_rainbow_colors ! $kak_opt_background_rainbow_colors | kak -p "${kak_session}"<ret>'
+            }
+        }
+    }
+}
+
+define-command -hidden rainbow-full-view %{
+    evaluate-commands -draft -save-regs ^ %{
+        try %{
+            execute-keys -save-regs _ ' ;Z<ret>' # save original main selection in ^ reg
+            evaluate-commands -save-regs '|' %{
+                execute-keys -draft '%<a-|>${kak_opt_kak_rainbower_source}/rainbower ${kak_client} "${kak_timestamp}" ${kak_opt_rainbow_mode} $(echo $kak_reg_caret | cut -d" " -f2) 0.0 9999999.9999999 $kak_opt_filetype "$kak_opt_rainbow_check_templates" $kak_opt_rainbow_colors ! $kak_opt_background_rainbow_colors | kak -p "${kak_session}"<ret>'
             }
         }
     }
