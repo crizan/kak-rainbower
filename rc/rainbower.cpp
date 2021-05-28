@@ -1106,7 +1106,7 @@ int main(int argc, const char **argv)
     CharPositionVector result;
     if(strcmp(filetype, "c") == 0)
     {
-        result = ParseCFile(source_code.data, false, (check_templates == 'Y'));
+        result = ParseCFile(source_code.data, false, (check_pound_ifs == 'Y'));
     }
     else if(strcmp(filetype, "cpp") == 0)
     {
