@@ -530,7 +530,7 @@ void ParsePoundIfs(char c, PoundIfParsing *parser)
     }
 }
 
-CharPositionVector ParseCFile(const char *buffer, bool check_templates)
+CharPositionVector ParseCFile(const char *buffer, bool check_templates, bool check_pound_ifs)
 {
     CharPositionVector result = {};
 
@@ -574,7 +574,7 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
               CharPosition p = {};
                 p.c = *c;
                 p.pair = cur_pos;
-                if(parser.pound_if_level >= 0 && (parser.pound_if_stack[parser.pound_if_level] == 0))
+                if(check_pound_ifs && parser.pound_if_level >= 0 && (parser.pound_if_stack[parser.pound_if_level] == 0))
                 {
                     ParsePoundIfs(*c, &parser);
                 }
@@ -603,7 +603,10 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
                 }
                 else if(info.current_string == '\0')
                 {
-                    ParsePoundIfs(*c, &parser);
+                    if(check_pound_ifs)
+                    {
+                        ParsePoundIfs(*c, &parser);
+                    }
 
                     if(*c == '<')
                     {
@@ -669,7 +672,7 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
             CharPosition p = {};
             p.c = *c;
             p.pair = cur_pos;
-            if(parser.pound_if_level >= 0 && (parser.pound_if_stack[parser.pound_if_level] == 0))
+            if(check_pound_ifs && parser.pound_if_level >= 0 && (parser.pound_if_stack[parser.pound_if_level] == 0))
             {
                 ParsePoundIfs(*c, &parser);
             }
@@ -698,7 +701,10 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
             }
             else if(!parser.stop_highlighting && info.current_string == '\0')
             {
-                ParsePoundIfs(*c, &parser);
+                if(check_pound_ifs)
+                {
+                    ParsePoundIfs(*c, &parser);
+                }
 
                 if(*c == '(' || *c == '[' || *c == '{' ||
                    (current_template.a == cur_pos.a && current_template.b == cur_pos.b
@@ -1066,8 +1072,9 @@ int main(int argc, const char **argv)
     window_bottom.a += 30;
 
     char check_templates = argv[8][0];
+    char check_pound_ifs = argv[9][0];
 
-    int i = 9;
+    int i = 10;
 
     const char **colors = argv + i;
     int num_colors = 0;
@@ -1099,11 +1106,11 @@ int main(int argc, const char **argv)
     CharPositionVector result;
     if(strcmp(filetype, "c") == 0)
     {
-        result = ParseCFile(source_code.data, false);
+        result = ParseCFile(source_code.data, false, (check_templates == 'Y'));
     }
     else if(strcmp(filetype, "cpp") == 0)
     {
-        result = ParseCFile(source_code.data, (check_templates == 'Y'));
+        result = ParseCFile(source_code.data, (check_templates == 'Y'), (check_pound_ifs == 'Y'));
     }
     else if(strcmp(filetype, "rust") == 0)
     {

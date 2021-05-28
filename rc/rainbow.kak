@@ -18,6 +18,8 @@ set-option global rainbow_mode 1
 
 declare-option str rainbow_check_templates
 set-option global rainbow_check_templates "n"
+declare-option str rainbow_check_pound_ifs
+set-option global rainbow_check_pound_ifs "Y"
 
 define-command rainbow-enable-window -docstring "enable rainbow parentheses for this window" %{
     hook -group rainbow window NormalIdle .* %{
@@ -54,7 +56,7 @@ define-command -hidden rainbow-view %{
             set-option window window_range %val{window_range}
             execute-keys -save-regs _ ' ;Z<ret>' # save original main selection in ^ reg
             evaluate-commands -save-regs '|' %{
-                execute-keys -draft '%<a-|>${kak_opt_kak_rainbower_source}/rainbower ${kak_client} "${kak_timestamp}" ${kak_opt_rainbow_mode} $(echo $kak_reg_caret | cut -d" " -f2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f1-2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f3-4) $kak_opt_filetype "$kak_opt_rainbow_check_templates" $kak_opt_rainbow_colors ! $kak_opt_background_rainbow_colors | kak -p "${kak_session}"<ret>'
+                execute-keys -draft '%<a-|>${kak_opt_kak_rainbower_source}/rainbower ${kak_client} "${kak_timestamp}" ${kak_opt_rainbow_mode} $(echo $kak_reg_caret | cut -d" " -f2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f1-2) $(echo $kak_opt_window_range | cut -d " " --output-delimiter="." -f3-4) $kak_opt_filetype "$kak_opt_rainbow_check_templates" "$kak_opt_rainbow_check_pound_ifs" $kak_opt_rainbow_colors ! $kak_opt_background_rainbow_colors | kak -p "${kak_session}"<ret>'
             }
         }
     }
@@ -65,7 +67,7 @@ define-command -hidden rainbow-full-view %{
         try %{
             execute-keys -save-regs _ ' ;Z<ret>' # save original main selection in ^ reg
             evaluate-commands -save-regs '|' %{
-                execute-keys -draft '%<a-|>${kak_opt_kak_rainbower_source}/rainbower ${kak_client} "${kak_timestamp}" ${kak_opt_rainbow_mode} $(echo $kak_reg_caret | cut -d" " -f2) 0.0 9999999.9999999 $kak_opt_filetype "$kak_opt_rainbow_check_templates" $kak_opt_rainbow_colors ! $kak_opt_background_rainbow_colors | kak -p "${kak_session}"<ret>'
+                execute-keys -draft '%<a-|>${kak_opt_kak_rainbower_source}/rainbower ${kak_client} "${kak_timestamp}" ${kak_opt_rainbow_mode} $(echo $kak_reg_caret | cut -d" " -f2) 0.0 9999999.9999999 $kak_opt_filetype "$kak_opt_rainbow_check_templates" "$kak_opt_rainbow_check_pound_ifs" $kak_opt_rainbow_colors ! $kak_opt_background_rainbow_colors | kak -p "${kak_session}"<ret>'
             }
         }
     }
