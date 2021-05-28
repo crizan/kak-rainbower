@@ -375,6 +375,161 @@ bool CCheckStartLineComment(const char *c, const char *buffer, const char *last_
     return (last_closed_comment != (c - 1) && *c == '/' && c != buffer && *(c - 1) == '/');
 }
 
+struct ParsingResult
+{
+    IntPair cursor;
+    bool end;
+};
+
+ParsingResult AdvanceParsing(const char c, const char **words, int num_words, IntPair cursor)
+{
+    if(cursor.a >= num_words || cursor.b >= strlen(words[cursor.a]))
+    {
+        exit(1); // TODO: print debugging info???
+    }
+    const char current_char = words[cursor.a][cursor.b];
+    if(current_char == c)
+    {
+        if(cursor.b == strlen(words[cursor.a]) - 1)
+        {
+            if(cursor.a == num_words - 1)
+            {
+                return {{0, 0}, true};
+            }
+            else
+            {
+                return {{cursor.a + 1, 0}, false};
+            }
+        }
+        else
+        {
+            return {{cursor.a, cursor.b + 1}, false};
+        }
+    }
+    else if(c == ' ' && cursor.b == 0)
+    {
+        return {cursor, false};
+    }
+    else
+    {
+        return {};
+    }
+}
+
+struct PoundIfParsing
+{
+    IntPair pound_if_zero;
+    IntPair pound_if_one;
+    IntPair pound_endif;
+    IntPair pound_else;
+
+    // NOTE: if you have more than 1000 nested #ifs then you have a problem
+    char pound_if_stack[1000];
+    int pound_if_level;
+
+    bool stop_highlighting;
+};
+
+void ParsePoundIfs(char c, PoundIfParsing *parser)
+{
+    bool check_for_not_zero_one_if = false;
+    bool found_zero_or_one = false;
+    const char *pound_if_one_words[] = {"#", "if", " ", "1"};
+    const char *pound_if_zero_words[] = {"#", "if", " ", "0"};
+    const char *else_words[] = {"#", "else"};
+    const char *endif_words[] = {"#", "endif"};
+
+    ParsingResult r;
+
+    if(parser->pound_if_zero.a == 3 && parser->pound_if_one.a == 3)
+    {
+        check_for_not_zero_one_if = true;
+    }
+
+    r = AdvanceParsing(c, pound_if_one_words, 4, parser->pound_if_one);
+    parser->pound_if_one = r.cursor;
+    if(r.end)
+    {
+        parser->pound_if_level++;
+        parser->pound_if_stack[parser->pound_if_level] = 1;
+
+        found_zero_or_one = true;
+    }
+
+    r = AdvanceParsing(c, pound_if_zero_words, 4, parser->pound_if_zero);
+    parser->pound_if_zero = r.cursor;
+    if(r.end)
+    {
+        parser->pound_if_level++;
+        parser->pound_if_stack[parser->pound_if_level] = 0;
+        parser->stop_highlighting = true;
+
+        found_zero_or_one = true;
+    }
+
+    if(check_for_not_zero_one_if)
+    {
+        if(parser->pound_if_zero.a == 0 && parser->pound_if_one.a == 0 && !found_zero_or_one)
+        {
+            parser->pound_if_level++;
+            parser->pound_if_stack[parser->pound_if_level] = 2;
+        }
+    }
+
+    if(parser->pound_if_level >= 0)
+    {
+        r = AdvanceParsing(c, endif_words, 2, parser->pound_endif);
+        parser->pound_endif = r.cursor;
+
+        if(r.end)
+        {
+            parser->stop_highlighting = false;
+            for(int i = 0; i < parser->pound_if_level; ++i)
+            {
+                if(parser->pound_if_stack[i] == 0)
+                {
+                    parser->stop_highlighting = true;
+                    break;
+                }
+            }
+            parser->pound_if_level--;
+        }
+
+        char else_value = 2;
+        if(parser->pound_if_stack[parser->pound_if_level] == 1)
+        {
+            else_value = 0;
+        }
+        else if(parser->pound_if_stack[parser->pound_if_level] == 0)
+        {
+            else_value = 1;
+        }
+
+        r = AdvanceParsing(c, else_words, 2, parser->pound_else);
+        parser->pound_else = r.cursor;
+        if(r.end)
+        {
+            parser->pound_if_stack[parser->pound_if_level] = else_value;
+            if(else_value == 0)
+            {
+                parser->stop_highlighting = true;
+            }
+            else
+            {
+                parser->stop_highlighting = false;
+                for(int i = 0; i < parser->pound_if_level; ++i)
+                {
+                    if(parser->pound_if_stack[i] == 0)
+                    {
+                        parser->stop_highlighting = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
 CharPositionVector ParseCFile(const char *buffer, bool check_templates)
 {
     CharPositionVector result = {};
@@ -397,11 +552,14 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
 
     CharPositionVector templates = {};
 
+    PoundIfParsing parser = {};
+    parser.pound_if_level = -1;
+
     if(check_templates)
     {
         for(const char *c = buffer; *c != '\0'; c++)
         {
-            if(*c == ';' || *c == '{')
+            if(*c == ';' || *c == '{' || *c == '.' || *c == '*')
             {
                 while(DeleteLessThanSign(&templates));
             }
@@ -413,9 +571,17 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
             }
             else
             {
-                CharPosition p = {};
+              CharPosition p = {};
                 p.c = *c;
                 p.pair = cur_pos;
+                if(parser.pound_if_level >= 0 && (parser.pound_if_stack[parser.pound_if_level] == 0))
+                {
+                    ParsePoundIfs(*c, &parser);
+                }
+                else if(parser.stop_highlighting)
+                {
+                    ParsePoundIfs(*c, &parser);
+                }
                 if(line_comment)
                 {
                 }
@@ -437,6 +603,8 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
                 }
                 else if(info.current_string == '\0')
                 {
+                    ParsePoundIfs(*c, &parser);
+
                     if(*c == '<')
                     {
                         Insert(&templates, p);
@@ -480,6 +648,9 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
 
     int template_i = 0;
 
+    parser = {};
+    parser.pound_if_level = -1;
+
     for(const char *c = buffer; *c != '\0'; c++)
     {
         IntPair current_template = {};
@@ -498,7 +669,15 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
             CharPosition p = {};
             p.c = *c;
             p.pair = cur_pos;
-            if(line_comment)
+            if(parser.pound_if_level >= 0 && (parser.pound_if_stack[parser.pound_if_level] == 0))
+            {
+                ParsePoundIfs(*c, &parser);
+            }
+            else if(parser.stop_highlighting)
+            {
+                ParsePoundIfs(*c, &parser);
+            }
+            else if(line_comment)
             {
             }
             else if(multiline_comment)
@@ -517,8 +696,10 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates)
             {
                 line_comment = true;
             }
-            else if(info.current_string == '\0')
+            else if(!parser.stop_highlighting && info.current_string == '\0')
             {
+                ParsePoundIfs(*c, &parser);
+
                 if(*c == '(' || *c == '[' || *c == '{' ||
                    (current_template.a == cur_pos.a && current_template.b == cur_pos.b
                     && *c == '<'))
@@ -854,14 +1035,11 @@ struct String
 
 void CopyString(char *dest, const char *src, size_t max_size)
 {
-    while(max_size-- > 0)
-    {
-        *dest++ = *src++;
-    }
-    *dest = 0;
+    memcpy(dest, src, max_size);
+    dest[max_size] = 0;
 }
 
-void AppendCStringToString(String *s, const char *to_append, size_t chars)
+void AppendCharArrayToString(String *s, const char *to_append, size_t chars)
 {
     s->data = (char *)realloc(s->data, s->length + chars + 2);
     CopyString(s->data + s->length, to_append, chars + 1);
@@ -898,8 +1076,6 @@ int main(int argc, const char **argv)
         num_colors++;
     }
 
-    i++;
-
     const char **background_colors = argv + i;
     int num_background_colors = 0;
     for(; i < argc; ++i)
@@ -912,7 +1088,7 @@ int main(int argc, const char **argv)
     char buffer[BUFFER_SIZE] = {};
     while(int bytes_read = read(STDIN_FILENO, buffer, BUFFER_SIZE - 1))
     {
-        AppendCStringToString(&source_code, buffer, bytes_read);
+        AppendCharArrayToString(&source_code, buffer, bytes_read);
     }
 
     if(!source_code.data)
