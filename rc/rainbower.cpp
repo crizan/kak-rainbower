@@ -241,7 +241,12 @@ int InsertPair(CharPositionVector *result, RainbowStack **s, int level, char ope
     return level;
 }
 
-CharPositionVector ParseGenericFile(const char *buffer)
+struct CharPair
+{
+    char a, b;
+};
+
+CharPositionVector ParseGenericFile(const char *buffer, CharPositionVector generics = {}, CharPair generic_pair = {})
 {
     CharPositionVector result = {};
 
@@ -250,9 +255,15 @@ CharPositionVector ParseGenericFile(const char *buffer)
     IntPair cur_pos = { 1, 1 };
 
     int level = 0;
+    int generic_i = 0;
 
     for(const char *c = buffer; *c != '\0'; c++)
     {
+        IntPair current_generic = {};
+        if(generic_i < generics.len)
+        {
+            current_generic = generics.array[generic_i].pair;
+        }
         if(*c == '\n')
         {
             cur_pos.a++;
@@ -263,16 +274,28 @@ CharPositionVector ParseGenericFile(const char *buffer)
             CharPosition p = {};
             p.c = *c;
             p.pair = cur_pos;
-            if(*c == '(' || *c == '[' || *c == '{')
+            if(*c == '(' || *c == '[' || *c == '{' ||
+               (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
+                && *c == generic_pair.a))
             {
                 p.level = level;
                 PushCharPosition(&s, p);
                 level++;
+                if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
+                {
+                    generic_i++;
+                }
             }
-            else if(p.c == ')' || p.c == ']' || p.c == '}')
+            else if(p.c == ')' || p.c == ']' || p.c == '}' ||
+                    (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
+                     && *c == generic_pair.b))
             {
                 char opening_bracket = GetMatchingPair(*c);
                 level = InsertPair(&result, &s, level, opening_bracket, p);
+                if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
+                {
+                    generic_i++;
+                }
             }
             cur_pos.b++;
         }
@@ -530,15 +553,15 @@ void ParsePoundIfs(char c, PoundIfParsing *parser)
     }
 }
 
-CharPositionVector ParseCFile(const char *buffer, bool check_templates, bool check_pound_ifs)
+struct String
 {
-    CharPositionVector result = {};
+    char *data;
+    size_t length;
+};
 
-    RainbowStack *s = NULL;
-
+CharPositionVector ParseCFile(String *string, bool check_templates, bool check_pound_ifs)
+{
     IntPair cur_pos = { 1, 1 };
-
-    int level = 0;
 
     StringParsingInfo info;
 
@@ -550,122 +573,24 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates, bool che
     bool line_comment = false;
     const char *last_closed_comment = 0;
 
-    CharPositionVector templates = {};
-
     PoundIfParsing parser = {};
     parser.pound_if_level = -1;
 
-    if(check_templates)
+    char *buffer = (char *)malloc(string->length + 1);
+    char *dc = buffer;
+    buffer[string->length] = 0;
+
+    for(const char *c = string->data; *c != '\0'; c++, dc++)
     {
-        for(const char *c = buffer; *c != '\0'; c++)
-        {
-            if(*c == ';' || *c == '{' || *c == '.' || *c == '*')
-            {
-                while(DeleteLessThanSign(&templates));
-            }
-            if(*c == '\n')
-            {
-                cur_pos.a++;
-                cur_pos.b = 1;
-                line_comment = false;
-            }
-            else
-            {
-              CharPosition p = {};
-                p.c = *c;
-                p.pair = cur_pos;
-                if(check_pound_ifs && parser.pound_if_level >= 0 && (parser.pound_if_stack[parser.pound_if_level] == 0))
-                {
-                    ParsePoundIfs(*c, &parser);
-                }
-                else if(parser.stop_highlighting)
-                {
-                    ParsePoundIfs(*c, &parser);
-                }
-                if(line_comment)
-                {
-                }
-                else if(multiline_comment)
-                {
-                    if(CCheckCloseMultilineComment(c, multiline_comment))
-                    {
-                        multiline_comment = NULL;
-                        last_closed_comment = c;
-                    }
-                }
-                else if(info.current_string == '\0' && CCheckStartMultilineComment(c, buffer, last_closed_comment))
-                {
-                    multiline_comment = c;
-                }
-                else if(info.current_string == '\0' && CCheckStartLineComment(c, buffer, last_closed_comment))
-                {
-                    line_comment = true;
-                }
-                else if(info.current_string == '\0')
-                {
-                    if(check_pound_ifs)
-                    {
-                        ParsePoundIfs(*c, &parser);
-                    }
+        bool should_check_char = false;
 
-                    if(*c == '<')
-                    {
-                        Insert(&templates, p);
-                    }
-                    else if(*c == '>')
-                    {
-                        if(NumPairable(templates) > 0)
-                        {
-                            // NOTE ignore arrow
-                            if(*(c - 1) != '-')
-                            {
-                                Insert(&templates, p);
-                            }
-                        }
-                    }
-                    else if(p.c == '\'' || p.c == '\"')
-                    {
-                        info.current_string = *c;
-                    }
-                }
-                else if(info.current_string)
-                {
-                    CContinueString(&info, c);
-                }
-                cur_pos.b++;
-            }
-        }
-    }
-
-    cur_pos = { 1, 1 };
-
-    level = 0;
-
-    info.current_string = '\0';
-    info.current_string_count = 0;
-
-    multiline_comment = NULL;
-
-    line_comment = false;
-    last_closed_comment = 0;
-
-    int template_i = 0;
-
-    parser = {};
-    parser.pound_if_level = -1;
-
-    for(const char *c = buffer; *c != '\0'; c++)
-    {
-        IntPair current_template = {};
-        if(template_i < templates.len)
-        {
-            current_template = templates.array[template_i].pair;
-        }
         if(*c == '\n')
         {
             cur_pos.a++;
             cur_pos.b = 1;
             line_comment = false;
+
+            should_check_char = true;
         }
         else
         {
@@ -699,37 +624,16 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates, bool che
             {
                 line_comment = true;
             }
-            else if(!parser.stop_highlighting && info.current_string == '\0')
+            else if(info.current_string == '\0')
             {
                 if(check_pound_ifs)
                 {
                     ParsePoundIfs(*c, &parser);
                 }
 
-                if(*c == '(' || *c == '[' || *c == '{' ||
-                   (current_template.a == cur_pos.a && current_template.b == cur_pos.b
-                    && *c == '<'))
-                {
-                    p.level = level;
-                    PushCharPosition(&s, p);
-                    level++;
-                    if(current_template.a == cur_pos.a && current_template.b == cur_pos.b)
-                    {
-                        template_i++;
-                    }
-                }
-                else if(p.c == ')' || p.c == ']' || p.c == '}' ||
-                       (current_template.a == cur_pos.a && current_template.b == cur_pos.b
-                        && p.c == '>'))
-                {
-                    char opening_bracket = GetMatchingPair(*c);
-                    level = InsertPair(&result, &s, level, opening_bracket, p);
-                    if(current_template.a == cur_pos.a && current_template.b == cur_pos.b)
-                    {
-                        template_i++;
-                    }
-                }
-                else if(p.c == '\'' || p.c == '\"')
+                should_check_char = true;
+
+                if(p.c == '\'' || p.c == '\"')
                 {
                     info.current_string = *c;
                 }
@@ -740,10 +644,66 @@ CharPositionVector ParseCFile(const char *buffer, bool check_templates, bool che
             }
             cur_pos.b++;
         }
+
+        if(!should_check_char)
+        {
+            *dc = ' ';
+        }
+        else
+        {
+            *dc = *c;
+        }
     }
 
-    Free(&s);
+    CharPositionVector templates = {};
+    cur_pos = { 1, 1 };
+
+    if(check_templates)
+    {
+        for(const char *c = buffer; *c != '\0'; c++)
+        {
+            if(*c == ';' || *c == '{' || *c == '.' || *c == '*')
+            {
+                while(DeleteLessThanSign(&templates));
+            }
+            if(*c == '\n')
+            {
+                cur_pos.a++;
+                cur_pos.b = 1;
+            }
+            else
+            {
+                CharPosition p = {};
+                p.c = *c;
+                p.pair = cur_pos;
+
+                if(*c == '<')
+                {
+                    Insert(&templates, p);
+                }
+                else if(*c == '>')
+                {
+                    if(NumPairable(templates) > 0)
+                    {
+                        // NOTE ignore arrow
+                        if(*(c - 1) != '-')
+                        {
+                            Insert(&templates, p);
+                        }
+                    }
+                }
+                cur_pos.b++;
+            }
+        }
+    }
+
+    CharPair template_pair;
+    template_pair.a = '<';
+    template_pair.b = '>';
+    CharPositionVector result = ParseGenericFile(buffer, templates, template_pair);
+
     Free(&templates);
+    free(buffer);
 
     return result;
 }
@@ -836,10 +796,8 @@ bool RustCheckStartLineComment(const char *c, const char *buffer, const char *la
     return (last_closed_comment != (c - 1) && *c == '/' && c != buffer && *(c - 1) == '/');
 }
 
-CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
+CharPositionVector ParseRustFile(String *string, bool check_generics)
 {
-    CharPositionVector result = {};
-
     CharPositionVector generics = {};
 
     RainbowStack *s = NULL;
@@ -857,107 +815,23 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
     bool line_comment = false;
     const char *last_closed_comment = 0;
 
-    if(check_generics)
+    char *buffer = (char *)malloc(string->length + 1);
+    buffer[string->length] = 0;
+    char *dc = buffer;
+
+    for(const char *c = string->data; *c != '\0'; c++, dc++)
     {
-        for(const char *c = buffer; *c != '\0'; c++)
-        {
-            info.closed_string = false;
+        bool should_check_char = false;
 
-            if(*c == '{' || *c == '|' || *c == '^' || *c == '!')
-            {
-                while(DeleteLessThanSign(&generics));
-            }
-            if(*c == '\n')
-            {
-                cur_pos.a++;
-                cur_pos.b = 1;
-                line_comment = false;
-            }
-            else
-            {
-                CharPosition p = {};
-                p.c = *c;
-                p.pair = cur_pos;
-                if(line_comment)
-                {
-                }
-                else if(info.current_string == '\0' && RustCheckStartMultilineComment(c, buffer, last_closed_comment))
-                {
-                    PushCommentLevel(&multiline_comment, c);
-                }
-                else if(multiline_comment)
-                {
-                    if(RustCheckCloseMultilineComment(c, multiline_comment->ptr))
-                    {
-                        PopCommentLevel(&multiline_comment);
-                        last_closed_comment = c;
-                    }
-                }
-                else if(info.current_string == '\0' && RustCheckStartLineComment(c, buffer, last_closed_comment))
-                {
-                    line_comment = true;
-                }
-                else
-                {
-                    if(info.current_string)
-                    {
-                        RustContinueString(&info, c);
-                    }
-                    if(info.current_string == '\0')
-                    {
-                        if(*c == '<')
-                        {
-                            Insert(&generics, p);
-                        }
-                        else if(p.c == '>')
-                        {
-                            if(NumPairable(generics) > 0)
-                            {
-                                if(*(c - 1) != '-')
-                                {
-                                    Insert(&generics, p);
-                                }
-                            }
-                        }
-                        else if(!info.closed_string && (p.c == '\'' || p.c == '\"'))
-                        {
-                            info.current_string = *c;
-                        }
-                    }
-                    cur_pos.b++;
-                }
-            }
-        }
-    }
-
-    Free(&multiline_comment);
-
-    cur_pos = { 1, 1 };
-
-    level = 0;
-
-    info.current_string = '\0';
-    info.current_string_count = 0;
-
-    line_comment = false;
-    last_closed_comment = 0;
-
-    int generic_i = 0;
-
-    for(const char *c = buffer; *c != '\0'; c++)
-    {
         info.closed_string = false;
 
-        IntPair current_generic = {};
-        if(generic_i < generics.len)
-        {
-            current_generic = generics.array[generic_i].pair;
-        }
         if(*c == '\n')
         {
             cur_pos.a++;
             cur_pos.b = 1;
             line_comment = false;
+
+            should_check_char = true;
         }
         else
         {
@@ -991,30 +865,8 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                 }
                 if(info.current_string == '\0')
                 {
-                    if(*c == '(' || *c == '[' || *c == '{' ||
-                       (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
-                        && *c == '<'))
-                    {
-                        p.level = level;
-                        PushCharPosition(&s, p);
-                        level++;
-                        if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
-                        {
-                            generic_i++;
-                        }
-                    }
-                    else if(p.c == ')' || p.c == ']' || p.c == '}' ||
-                            (current_generic.a == cur_pos.a && current_generic.b == cur_pos.b
-                             && *c == '>'))
-                    {
-                        char opening_bracket = GetMatchingPair(*c);
-                        level = InsertPair(&result, &s, level, opening_bracket, p);
-                        if(current_generic.a == cur_pos.a && current_generic.b == cur_pos.b)
-                        {
-                            generic_i++;
-                        }
-                    }
-                    else if(!info.closed_string && (p.c == '\'' || p.c == '\"'))
+                    should_check_char = true;
+                    if(!info.closed_string && (p.c == '\'' || p.c == '\"'))
                     {
                         info.current_string = *c;
                     }
@@ -1022,22 +874,70 @@ CharPositionVector ParseRustFile(const char *buffer, bool check_generics)
                 cur_pos.b++;
             }
         }
+
+        if(!should_check_char)
+        {
+            *dc = ' ';
+        }
+        else
+        {
+            *dc = *c;
+        }
     }
 
-    Free(&s);
-    Free(&generics);
     Free(&multiline_comment);
+
+    cur_pos = { 1, 1 };
+
+    if(check_generics)
+    {
+        for(const char *c = buffer; *c != '\0'; c++)
+        {
+            if(*c == '{' || *c == '|' || *c == '^' || *c == '!')
+            {
+                while(DeleteLessThanSign(&generics));
+            }
+            if(*c == '\n')
+            {
+                cur_pos.a++;
+                cur_pos.b = 1;
+            }
+            else
+            {
+                CharPosition p = {};
+                p.c = *c;
+                p.pair = cur_pos;
+                if(*c == '<')
+                {
+                    Insert(&generics, p);
+                }
+                else if(p.c == '>')
+                {
+                    if(NumPairable(generics) > 0)
+                    {
+                        if(*(c - 1) != '-')
+                        {
+                            Insert(&generics, p);
+                        }
+                    }
+                }
+                cur_pos.b++;
+            }
+        }
+    }
+
+    CharPair generic_pair;
+    generic_pair.a = '<';
+    generic_pair.b = '>';
+    CharPositionVector result = ParseGenericFile(buffer, generics, generic_pair);
+
+    Free(&generics);
+    free(buffer);
 
     return result;
 }
 
 #define BUFFER_SIZE 500
-
-struct String
-{
-    char *data;
-    size_t length;
-};
 
 void CopyString(char *dest, const char *src, size_t max_size)
 {
@@ -1106,15 +1006,15 @@ int main(int argc, const char **argv)
     CharPositionVector result;
     if(strcmp(filetype, "c") == 0)
     {
-        result = ParseCFile(source_code.data, false, (check_pound_ifs == 'Y'));
+        result = ParseCFile(&source_code, false, (check_pound_ifs == 'Y'));
     }
     else if(strcmp(filetype, "cpp") == 0)
     {
-        result = ParseCFile(source_code.data, (check_templates == 'Y'), (check_pound_ifs == 'Y'));
+        result = ParseCFile(&source_code, (check_templates == 'Y'), (check_pound_ifs == 'Y'));
     }
     else if(strcmp(filetype, "rust") == 0)
     {
-        result = ParseRustFile(source_code.data, (check_templates == 'Y'));
+        result = ParseRustFile(&source_code, (check_templates == 'Y'));
     }
     else
     {
