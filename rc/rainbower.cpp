@@ -955,19 +955,6 @@ CharPositionVector ParseRustFile(String *string, bool check_generics)
 
 #define BUFFER_SIZE 500
 
-void CopyString(char *dest, const char *src, size_t max_size)
-{
-    memcpy(dest, src, max_size);
-    dest[max_size] = 0;
-}
-
-void AppendCharArrayToString(String *s, const char *to_append, size_t chars)
-{
-    s->data = (char *)realloc(s->data, s->length + chars + 1);
-    CopyString(s->data + s->length, to_append, chars);
-    s->length += chars;
-}
-
 int main(int argc, const char **argv)
 {
     const char *client = argv[1];
@@ -1008,11 +995,29 @@ int main(int argc, const char **argv)
 
     String source_code = {};
 
-    char buffer[BUFFER_SIZE] = {};
-    while(int bytes_read = read(STDIN_FILENO, buffer, BUFFER_SIZE - 1))
+    size_t buffer_size = BUFFER_SIZE;
+    char *string = (char *)malloc(BUFFER_SIZE);
+    size_t length = 0;
+    size_t read_size = buffer_size;
+    while(int bytes_read = read(STDIN_FILENO, string + length, read_size))
     {
-        AppendCharArrayToString(&source_code, buffer, bytes_read);
+        length += bytes_read;
+        read_size = length*1.5;
+        if(length + read_size >= buffer_size)
+        {
+            buffer_size += read_size;
+            char *result = (char *)realloc(string, buffer_size + 1);
+            if(result)
+            {
+                string = result;
+            }
+        }
     }
+
+    string[length] = 0;
+
+    source_code.data = string;
+    source_code.length = length;
 
     if(!source_code.data)
     {
