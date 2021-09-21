@@ -13,7 +13,7 @@ plug "crizan/kak-rainbower" do %{
 } config %{
     set-option global rainbower_mode 1
 
-    hook global WinSetOption filetype=.* %{
+    hook global WinSetOption filetype=(cpp|c|rust) %{
         rainbower-enable-window
     }
 }
