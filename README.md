@@ -6,6 +6,19 @@ Currently highlights () [] {}, <> only in cpp and rust with rainbow_check_templa
 # installation
 Install with plug.kak or copy the rc folder contents into your kakoune autoload folder \
 Compile rainbower.cpp manually (for example: `g++ rainbower.cpp -O2 -o rainbower`). The binary needs to be in the same folder as the rainbow.kak file. Or use the command rainbower-compile (requires gcc or clang installed)
+# enabling
+```
+plug "crizan/kak-rainbower" do %{
+    g++ -O2 -o ./rc/rainbower ./rc/rainbower.cpp
+} config %{
+    set-option global rainbower_mode 1
+
+    hook global WinSetOption filetype=.* %{
+        rainbower-enable-window
+    }
+}
+```
+
 # modes
 rainbow_mode 0 only highlight pairs \
 rainbow_mode 1 highlight pairs and current scope in green \

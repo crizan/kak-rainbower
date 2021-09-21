@@ -1045,7 +1045,7 @@ int main(int argc, const char **argv)
     CharPosition cursor_range_a = {};
     CharPosition cursor_range_b = {};
 
-    printf("eval -client %s set-option window rainbow %s ", client, timestamp);
+    printf("eval -client %s set-option window rainbower %s ", client, timestamp);
 
     for(int k = result.len - 2; k >= 0; k -= 2)
     {
