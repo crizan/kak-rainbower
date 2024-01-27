@@ -957,7 +957,7 @@ CharPositionVector ParseRustFile(String *string, bool check_generics)
 
 int main(int argc, const char **argv)
 {
-    const char *client = argv[1];
+    const char *buffer = argv[1];
     const char *timestamp = argv[2];
     char mode = argv[3][0];
 
@@ -1045,7 +1045,7 @@ int main(int argc, const char **argv)
     CharPosition cursor_range_a = {};
     CharPosition cursor_range_b = {};
 
-    printf("eval -client %s set-option window rainbow %s ", client, timestamp);
+    printf("evaluate-commands -buffer %s -- set-option buffer rainbow %s ", buffer, timestamp);
 
     for(int k = result.len - 2; k >= 0; k -= 2)
     {
