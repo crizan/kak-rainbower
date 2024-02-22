@@ -40,7 +40,7 @@ define-command rainbow-enable-window -docstring "enable rainbow parentheses for 
 
 define-command rainbow-disable-window -docstring "disable rainbow parentheses for this window" %{
     remove-hooks window rainbow
-    remove-highlighter window/rainbow
+    remove-highlighter buffer/rainbow
 }
 
 define-command rainbower-compile %{
